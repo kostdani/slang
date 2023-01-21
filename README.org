@@ -1,0 +1,214 @@
+#+TITLE: slang - S-Expression languages frontend
+#+AUTHOR: kostdani
+#+EMAIL: kostdani@mail.com
+
+#+DESCRIPTION: Compiler frontend for S-Expression languages tageting LLVM IR
+#+HOMEPAGE: https://github.com/kostdani/slang
+#+KEYWORDS: llvm, s-expression, compiler, scheme, lisp, c
+#+LANGUAGE: en
+
+* Introduction
+
+Slang is a compiler frontend for S-Expression languages targeting LLVM IR. It
+is written in C and uses LLVM C API. It is designed to be used as a CLI tool.
+
+* Languages
+
+** TODO SEIR
+
+SEIR stands for S-Expression Intermediate Representation. It is designed
+to have s-expression syntax and as close to LLVM IR semantics as possible.
+It is not intended to be used directly, but rather as a target language for
+other S-Expression languages which they can be transformed to using macros.
+Something liek assembly of lisps.
+
+*** TODO features
+
+**** Types
+
+all LLvM types are supported. They are represented as s-expression symbols
+starting with : and followed by type name.
+- :void - void type (can be omitted)
+- :i<width> - integer type with <width> bits
+- :u<width> - unsigned integer type with <width> bits
+- :f<width> - floating point type with <width> bits
+- (:pointer <type>) - pointer type to <type>
+- (:array <type> <size>) - array type with <size> elements of <type>
+- (:funtion <return-type> <arg1-type> <arg2-type> ...) - function type with
+  return type <return-type> and arguments of types <arg1-type> <arg2-type> ...
+- (:struct <field1-type> <field2-type> ...) - structure type with fields of
+  types <field1-type> <field2-type> ...
+  
+**** Functions
+
+Functions are defined using the following syntax:
+- (funtion ((name <return-type>) (<arg1-name> <arg1-type>) (<arg2-name> <arg2-type>) ...)
+  <body> ...)
+
+**** Structs
+
+Structs are defined using the following syntax:
+- (struct name (field1-mame field1-type) (field2-name field2-type) ...)
+
+**** Variables
+
+Variables are defined using the following syntax:
+
+*** Src
+
+**** Parser
+
+Parser is implemented using recursive descent parser. It is as simple as
+possible and does not support any error recovery. It should be able to parse correct
+programs, but it is not guaranteed to parse incorrect programs.
+
+#+BEGIN_SRC C :tangle parser.c :comments both :exports both
+  #pragma once
+  #include <stdio.h>
+  #include <malloc.h>
+  #include <string.h>
+  #include <wctype.h>
+
+  typedef struct s_expr{
+    enum{
+      LIST,
+      ATOM
+    } type;
+    void * ptr;
+  } SExpr;
+
+  SExpr make_atom(char *str,size_t n){
+    char *atom=(char *)malloc(n+1);
+    strncpy(atom,str,n);
+    atom[n]=0;
+    SExpr a;
+    a.type=ATOM;
+    a.ptr=(void *)atom;
+  }
+
+  SExpr parse_expr(char ** str);
+
+  SExpr parse_atom(char ** str){
+    size_t i;
+    SExpr atom;
+    atom.type=ATOM;
+    switch (**str) {
+    case '"':
+      for(i=1;(*str)[i]!='"';i++)
+	if(str[i]=='\\')
+	  i++;
+      i++;
+      atom.ptr=malloc(i+1);
+      strncpy((char *)atom.ptr,*str,i);
+      ((char *)atom.ptr)[i]=0;
+      (*str)+=i;
+      return atom;
+    default:
+      for (i=0; !iswspace((*str)[i])&&(*str)[i]!=')'&&(*str)[i]!='('; i++);
+      atom.ptr=malloc(i+1);
+      strncpy((char *)atom.ptr,*str,i);
+      ((char *)atom.ptr)[i]=0;
+      (*str)+=i;
+      return atom;
+    }
+  }
+
+  SExpr parse_list(char **str){
+    (*str)++;
+    SExpr list;
+    list.type=LIST;
+    size_t a_len=0;
+    size_t m_len=1;
+    list.ptr= malloc(m_len*sizeof(SExpr)+1);
+    SExpr *p=(SExpr *)list.ptr;
+    while(1){
+      for(;iswspace(**str);(*str)++);
+      if(**str==')'){
+	(*str)++;
+	SExpr nil;
+	nil.type=LIST;
+	nil.ptr=0;
+	((SExpr *)list.ptr)[a_len]=nil;
+	return list;
+      }
+      ((SExpr *)list.ptr)[a_len]= parse_expr(str);
+      a_len++;
+      if(a_len==m_len){
+	m_len*=2;
+	list.ptr= realloc(list.ptr,m_len*sizeof(SExpr)+1);
+      }
+    }
+  }
+
+  SExpr parse_expr(char ** str){
+    for(;iswspace(**str);(*str)++);
+    if(**str=='(')
+      return parse_list(str);
+    else
+      return parse_atom(str);
+
+  }
+
+  SExpr parse(char *s){
+    size_t l=strlen(s);
+    char *ostr=(char *)malloc(l+1);
+    char *str=ostr;
+    strcpy(str,s);
+    str[l]=0;
+    SExpr ast= parse_expr(&str);
+    free(ostr);
+    return ast;
+  }
+
+  void print_sexpr(SExpr sexp){
+    if(sexp.type==ATOM)
+      printf("%s",(char *)sexp.ptr);
+    else if(sexp.type==LIST) {
+      printf("(");
+      for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++) {
+	if(i!=sexp.ptr)
+	  printf(" ");
+	print_sexpr(*i);
+      }
+      printf(")");
+    }
+  }
+
+  void free_sexpr(SExpr sexp){
+    if(sexp.type==LIST)
+      for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++)
+	free_sexpr(*i);
+    char *c=(char *)sexp.ptr;
+    if(sexp.ptr)
+      free(c);
+  }
+
+  #define LISP(str) parse(#str)
+#+END_SRC
+
+**** main
+
+#+BEGIN_SRC C :tangle main.c :comments both :exports both
+#include "parser.c"
+
+int main() {
+    SExpr ast = LISP((function ((main :i32) (argc :i32) (argv :pointer (:pointer :i8))) (return :i32 0)));
+    print_sexpr(ast);
+    free_sexpr(ast);
+    return 0;
+}
+#+END_SRC
+
+** TODO l2lisp
+
+l2lisp stands for low level lisp. It is a static typed low level dialect of
+Lisp. It is designed to be easily transformed to SEIR. Something like C of
+lisps.
+
+** TODO Scheme
+
+Scheme is existing lisp dialect. The goal is to be able to transform it to
+SEIR.
+
+
+
