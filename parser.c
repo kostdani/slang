@@ -38,8 +38,8 @@ SExpr parse_atom(char ** str){
   switch (**str) {
   case '"':
     for(i=1;(*str)[i]!='"';i++)
-      if((*str)[i]=='\\')
-	    i++;
+      if(str[i]=='\\')
+	i++;
     i++;
     atom.ptr=malloc(i+1);
     strncpy((char *)atom.ptr,*str,i);
@@ -63,6 +63,7 @@ SExpr parse_list(char **str){
   size_t a_len=0;
   size_t m_len=1;
   list.ptr= malloc(m_len*sizeof(SExpr)+1);
+  SExpr *p=(SExpr *)list.ptr;
   while(1){
     for(;iswspace(**str);(*str)++);
     if(**str==')'){
