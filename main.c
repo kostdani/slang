@@ -6,7 +6,7 @@
 
 int main() {
 
-  SExpr sexp=LISP((module "test" (function ((main i32) (argc i32)) (block entry (ret 0)))));
+  SExpr sexp=LISP((module test (function (main (argc <i32>)) (block :entry: (add <i32> n 2 2) (add <i32> m n n) (ret m)))));
   prints(sexp);
   LLVMModuleRef module=compile_module(sexp);
   LLVMDumpModule(module);

@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include "parser.c"
 
+
 // environment is linked list of variable names and their values
 typedef struct env{
   char *name;
@@ -42,23 +43,47 @@ int atomeq(SExpr atom,char *str){
 }
 
 LLVMTypeRef compile_type(SExpr sexp){
+  if(sexp.ptr==0)
+    return LLVMVoidType();
   if(sexp.type==ATOM){
-    if(atomeq(sexp,"i8"))
+    if(atomeq(sexp,"<i8>"))
       return LLVMInt8Type();
-    else if(atomeq(sexp,"i16"))
+    else if(atomeq(sexp,"<i16>"))
       return LLVMInt16Type();
-    else if(atomeq(sexp,"i32"))
+    else if(atomeq(sexp,"<i32>"))
       return LLVMInt32Type();
-    else if(atomeq(sexp,"i64"))
+    else if(atomeq(sexp,"<i64>"))
       return LLVMInt64Type();
-    else if(atomeq(sexp,"f32"))
+    else if(atomeq(sexp,"<f32>"))
       return LLVMFloatType();
-    else if(atomeq(sexp,"f64"))
+    else if(atomeq(sexp,"<f64>"))
       return LLVMDoubleType();
-    else if(atomeq(sexp,"void"))
+    else if(atomeq(sexp,"<void>"))
       return LLVMVoidType();
     return 0;
+  }else if(sexp.type==LIST){
+    SExpr *p=(SExpr *)sexp.ptr;
+    if(atomeq(p[0],"<ptr>")){
+      LLVMTypeRef t=compile_type(p[1]);
+      if(!t)
+	t=LLVMVoidType();
+      return LLVMPointerType(t,0);
+    }else if(atomeq(p[0],"<fn>")){
+      LLVMTypeRef ret=compile_type(p[1]);
+      if(!ret)
+	return LLVMFunctionType(LLVMVoidType(),0,0,0);
+      LLVMTypeRef *args=0;
+      size_t argn;
+      for(argn=0;p[argn+2].ptr;argn++);
+      args=malloc(argn*sizeof(LLVMTypeRef));
+      for(size_t i=0;i<argn;i++)
+	args[i]=compile_type(p[i+2]);
+      LLVMTypeRef fn=LLVMFunctionType(ret,args,argn,0);
+      free(args);
+      return fn;
+    }
   }
+  return 0;
 }
 LLVMValueRef compile_value(LLVMBuilderRef builder,SExpr sexp){
   if(sexp.type==ATOM){
@@ -76,7 +101,8 @@ LLVMValueRef compile_value(LLVMBuilderRef builder,SExpr sexp){
     // get value allocated in module by name
     LLVMValueRef val=get_var((char *)sexp.ptr);
     // LLVMBuildLoad2(builder,LLVMTypeOf(val),val,"");
-    return LLVMBuildLoad2(builder,LLVMTypeOf(val),val,"");
+      return val;
+    //return LLVMBuildLoad2(builder,LLVMTypeOf(val),val,"");
     //return LLVMBuildLoad(builder,val,(char *)sexp.ptr);
 
   }
@@ -112,29 +138,29 @@ void compile_instr(LLVMBuilderRef builder,SExpr sexp){
       LLVMValueRef op2=compile_value(builder,list[4]);
       // build add instruction
       LLVMValueRef add=LLVMBuildAdd(builder,op1,op2,name);
-      // store result in variable
-      LLVMBuildStore(builder,add,LLVMBuildAlloca(builder,type,name));
+      // store result in variable in env
+      add_var(name,add);
     }else if(atomeq(list[0],"sub")){
       LLVMTypeRef type=compile_type(list[1]);
       char *name=(char *)list[2].ptr;
       LLVMValueRef op1=compile_value(builder,list[3]);
       LLVMValueRef op2=compile_value(builder,list[4]);
       LLVMValueRef sub=LLVMBuildSub(builder,op1,op2,name);
-      LLVMBuildStore(builder,sub,LLVMBuildAlloca(builder,type,name));
+      add_var(name,sub);
     }else if(atomeq(list[0],"mul")){
       LLVMTypeRef type=compile_type(list[1]);
       char *name=(char *)list[2].ptr;
       LLVMValueRef op1=compile_value(builder,list[3]);
       LLVMValueRef op2=compile_value(builder,list[4]);
       LLVMValueRef mul=LLVMBuildMul(builder,op1,op2,name);
-      LLVMBuildStore(builder,mul,LLVMBuildAlloca(builder,type,name));
+      add_var(name,mul);
     }else if(atomeq(list[0],"div")){
       LLVMTypeRef type=compile_type(list[1]);
       char *name=(char *)list[2].ptr;
       LLVMValueRef op1=compile_value(builder,list[3]);
       LLVMValueRef op2=compile_value(builder,list[4]);
       LLVMValueRef div=LLVMBuildSDiv(builder,op1,op2,name);
-      LLVMBuildStore(builder,div,LLVMBuildAlloca(builder,type,name));
+      add_var(name,div);
     }else if(atomeq(list[0],"call")){
       // second elem is name of variable to store result
       char *name=(char *)list[1].ptr;
@@ -154,7 +180,8 @@ void compile_instr(LLVMBuilderRef builder,SExpr sexp){
       // build call instruction using LLVMCallConv2
       LLVMValueRef call=LLVMBuildCall2(builder,type,func,args,n_args,(char *)list[1].ptr);
       //	LLVMValueRef call=LLVMBuildCall(builder,LLVMGetNamedFunction(module,fname),args,n_args,(char *)list[1].ptr);
-      LLVMBuildStore(builder,call,LLVMBuildAlloca(builder,LLVMTypeOf(call),name));
+      // store result in variable in env
+      add_var(name,call);
     }else if(atomeq(list[0],"load")){
       // second elem is name of variable to store result
       char *rname=(char *)list[1].ptr;
@@ -162,7 +189,7 @@ void compile_instr(LLVMBuilderRef builder,SExpr sexp){
       char *name=(char *)list[2].ptr;
       LLVMValueRef load=LLVMBuildLoad2(builder, LLVMTypeOf(get_var(name)),get_var(name),name);
       //LLVMValueRef load=LLVMBuildLoad(builder,get_var(name),name);
-      LLVMBuildStore(builder,load,LLVMBuildAlloca(builder,LLVMTypeOf(load),rname));
+      add_var(rname,load);
     }else if(atomeq(list[0],"store")){
       // second elem is name of variable to store
       char *name=(char *)list[1].ptr;
@@ -196,20 +223,27 @@ void compile_global(LLVMModuleRef module,SExpr sexp){
       SExpr *signatures=(SExpr *)list[1].ptr;
       // signatures is list of ((name type) ...)
       //first signature is return type and name of function
-      SExpr *namesig=(SExpr *)signatures[0].ptr;
-      char *name=(char *)namesig[0].ptr;
-      LLVMTypeRef rettype=compile_type(namesig[1]);
+      char *name;
+      LLVMTypeRef rettype;
+      if(signatures[0].type==LIST) {
+	  SExpr *namesig = (SExpr *) signatures[0].ptr;
+	  name = (char *) namesig[0].ptr;
+	  rettype = compile_type(namesig[1]);
+      } else{
+	  name=(char *)signatures[0].ptr;
+	  rettype=LLVMVoidType();
+      }
       size_t n_args=0;
       for(SExpr *i=signatures+1;i->ptr;i++)
-	n_args++;
+	    n_args++;
       LLVMTypeRef *argtypes=malloc(n_args*sizeof(LLVMTypeRef));
       for(size_t i=0;i<n_args;i++)
-	argtypes[i]=compile_type(((SExpr *)signatures[i+1].ptr)[1]);
+	    argtypes[i]=compile_type(((SExpr *)signatures[i+1].ptr)[1]);
       LLVMTypeRef functype=LLVMFunctionType(rettype,argtypes,n_args,0);
       LLVMValueRef function=LLVMAddFunction(module,name,functype);
       for(size_t i=0;i<n_args;i++){
-	LLVMValueRef arg=LLVMGetParam(function,i);
-	LLVMSetValueName(arg,((char *)(((SExpr *)signatures[i+1].ptr)[0].ptr)));
+	    LLVMValueRef arg=LLVMGetParam(function,i);
+	    LLVMSetValueName(arg,((char *)(((SExpr *)signatures[i+1].ptr)[0].ptr)));
       }
       for(SExpr *body=list+2;body->ptr;body++)
 	compile_block(function,*body);
