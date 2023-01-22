@@ -38,7 +38,7 @@ SExpr parse_atom(char ** str){
   switch (**str) {
   case '"':
     for(i=1;(*str)[i]!='"';i++)
-      if(str[i]=='\\')
+      if((*str)[i]=='\\')
 	i++;
     i++;
     atom.ptr=malloc(i+1);
@@ -115,6 +115,11 @@ void print_sexpr(SExpr sexp){
     }
     printf(")");
   }
+}
+
+void prints(SExpr sexp){
+  print_sexpr(sexp);
+  printf("\n");
 }
 
 void free_sexpr(SExpr sexp){

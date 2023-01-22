@@ -7,8 +7,7 @@
 int main() {
 
   SExpr sexp=LISP((module "test" (function ((main i32) (argc i32)) (block entry (ret 0)))));
-  print_sexpr(sexp);
-  printf("\n");
+  prints(sexp);
   LLVMModuleRef module=compile_module(sexp);
   LLVMDumpModule(module);
   free_sexpr(sexp);
