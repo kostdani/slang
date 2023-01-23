@@ -36,6 +36,11 @@ LLVMValueRef get_var(char *name){
   return 0;
 }
 
+void free_env(){
+  for(Env *e=global_env;e;e=e->next)
+    free(e);
+}
+
 int atomeq(SExpr atom,char *str){
   if(atom.type==ATOM)
     return !strcmp(str,(char *)atom.ptr);
@@ -182,6 +187,7 @@ void compile_instr(LLVMBuilderRef builder,SExpr sexp){
       //	LLVMValueRef call=LLVMBuildCall(builder,LLVMGetNamedFunction(module,fname),args,n_args,(char *)list[1].ptr);
       // store result in variable in env
       add_var(name,call);
+      free(args);
     }else if(atomeq(list[0],"load")){
       // second elem is name of variable to store result
       char *rname=(char *)list[1].ptr;
@@ -247,6 +253,7 @@ void compile_global(LLVMModuleRef module,SExpr sexp){
       }
       for(SExpr *body=list+2;body->ptr;body++)
 	compile_block(function,*body);
+      free(argtypes);
     }
   }
 }
