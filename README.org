@@ -94,6 +94,56 @@ Variables are defined using the following syntax:
 
 *** Src
 
+**** AST
+
+#+BEGIN_SRC C :tangle ast.c :comments both :exports both
+  #include <stdio.h>
+  #include <malloc.h>
+
+  typedef struct s_expr{
+      enum{
+          LIST,
+          ATOM
+      } type;
+      void * ptr;
+  } SExpr;
+
+  void print_sexpr(SExpr sexp){
+      if(sexp.type==ATOM)
+          printf("%s",(char *)sexp.ptr);
+      else if(sexp.type==LIST) {
+          printf("(");
+          for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++) {
+              if(i!=sexp.ptr)
+                  printf(" ");
+              print_sexpr(*i);
+          }
+          printf(")");
+      }
+  }
+
+  void prints(SExpr sexp){
+      print_sexpr(sexp);
+      printf("\n");
+  }
+
+  void free_sexpr(SExpr sexp){
+      if(sexp.type==LIST)
+          for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++)
+              free_sexpr(*i);
+      char *c=(char *)sexp.ptr;
+      if(sexp.ptr)
+          free(c);
+  }
+
+  
+  int atomeq(SExpr atom,char *str){
+      if(atom.type==ATOM)
+          return !strcmp(str,(char *)atom.ptr);
+      return 0;
+  }
+#+END_SRC
+
 **** Parser
 
 Parser is implemented using recursive descent parser. It is as simple as
@@ -105,128 +155,115 @@ programs, but it is not guaranteed to parse incorrect programs.
   #include <malloc.h>
   #include <string.h>
   #include <wctype.h>
-
-  typedef struct s_expr{
-    enum{
-      LIST,
-      ATOM
-    } type;
-    void * ptr;
-  } SExpr;
-  /*
-    SExpr make_atom(char *str,size_t n){
-    char *atom=(char *)malloc(n+1);
-    strncpy(atom,str,n);
-    atom[n]=0;
-    SExpr a;
-    a.type=ATOM;
-    a.ptr=(void *)atom;
-    return a;
-    }*/
+  #include "ast.c"
 
   SExpr parse_expr(char ** str);
 
   SExpr parse_atom(char ** str){
-    size_t i;
-    SExpr atom;
-    atom.type=ATOM;
-    switch (**str) {
-    case '"':
-      for(i=1;(*str)[i]!='"';i++)
-	if((*str)[i]=='\\')
-	  i++;
-      i++;
-      atom.ptr=malloc(i+1);
-      strncpy((char *)atom.ptr,*str,i);
-      ((char *)atom.ptr)[i]=0;
-      (*str)+=i;
-      return atom;
-    default:
-      for (i=0; !iswspace((*str)[i])&&(*str)[i]!=')'&&(*str)[i]!='('; i++);
-      atom.ptr=malloc(i+1);
-      strncpy((char *)atom.ptr,*str,i);
-      ((char *)atom.ptr)[i]=0;
-      (*str)+=i;
-      return atom;
-    }
+      size_t i;
+      SExpr atom;
+      atom.type=ATOM;
+      switch (**str) {
+      case '"':
+          for(i=1;(*str)[i]!='"';i++)
+              if((*str)[i]=='\\')
+                  i++;
+          i++;
+          atom.ptr=malloc(i+1);
+          strncpy((char *)atom.ptr,*str,i);
+          ((char *)atom.ptr)[i]=0;
+          (*str)+=i;
+          return atom;
+      default:
+          for (i=0; !iswspace((*str)[i])&&(*str)[i]!=')'&&(*str)[i]!='('; i++);
+          atom.ptr=malloc(i+1);
+          strncpy((char *)atom.ptr,*str,i);
+          ((char *)atom.ptr)[i]=0;
+          (*str)+=i;
+          return atom;
+      }
   }
 
   SExpr parse_list(char **str){
-    (*str)++;
-    SExpr list;
-    list.type=LIST;
-    size_t a_len=0;
-    size_t m_len=1;
-    list.ptr= malloc(m_len*sizeof(SExpr)+1);
-    //SExpr *p=(SExpr *)list.ptr;
-    while(1){
-      for(;iswspace(**str);(*str)++);
-      if(**str==')'){
-	(*str)++;
-	SExpr nil;
-	nil.type=LIST;
-	nil.ptr=0;
-	((SExpr *)list.ptr)[a_len]=nil;
-	return list;
+      (*str)++;
+      SExpr list;
+      list.type=LIST;
+      size_t a_len=0;
+      size_t m_len=1;
+      list.ptr= malloc(m_len*sizeof(SExpr)+1);
+      while(1){
+          for(;iswspace(**str);(*str)++);
+          if(**str==')'){
+              (*str)++;
+              SExpr nil;
+              nil.type=LIST;
+              nil.ptr=0;
+              ((SExpr *)list.ptr)[a_len]=nil;
+              return list;
+          }
+          ((SExpr *)list.ptr)[a_len]= parse_expr(str);
+          a_len++;
+          if(a_len==m_len){
+              m_len*=2;
+              list.ptr= realloc(list.ptr,m_len*sizeof(SExpr)+1);
+          }
       }
-      ((SExpr *)list.ptr)[a_len]= parse_expr(str);
-      a_len++;
-      if(a_len==m_len){
-	m_len*=2;
-	list.ptr= realloc(list.ptr,m_len*sizeof(SExpr)+1);
-      }
-    }
   }
 
   SExpr parse_expr(char ** str){
-    for(;iswspace(**str);(*str)++);
-    if(**str=='(')
-      return parse_list(str);
-    else
-      return parse_atom(str);
+      for(;iswspace(**str);(*str)++);
+      if(**str=='(')
+          return parse_list(str);
+      else
+          return parse_atom(str);
 
   }
 
   SExpr parse(char *s){
-    size_t l=strlen(s);
-    char *ostr=(char *)malloc(l+1);
-    char *str=ostr;
-    strcpy(str,s);
-    str[l]=0;
-    SExpr ast= parse_expr(&str);
-    free(ostr);
-    return ast;
-  }
-
-  void print_sexpr(SExpr sexp){
-    if(sexp.type==ATOM)
-      printf("%s",(char *)sexp.ptr);
-    else if(sexp.type==LIST) {
-      printf("(");
-      for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++) {
-	if(i!=sexp.ptr)
-	  printf(" ");
-	print_sexpr(*i);
-      }
-      printf(")");
-    }
-  }
-
-  void prints(SExpr sexp){
-    print_sexpr(sexp);
-    printf("\n");
-  }
-
-  void free_sexpr(SExpr sexp){
-    if(sexp.type==LIST)
-      for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++)
-	free_sexpr(*i);
-    char *c=(char *)sexp.ptr;
-    if(sexp.ptr)
-      free(c);
+      size_t l=strlen(s);
+      char *ostr=(char *)malloc(l+1);
+      char *str=ostr;
+      strcpy(str,s);
+      str[l]=0;
+      SExpr ast= parse_expr(&str);
+      free(ostr);
+      return ast;
   }
 
   #define LISP(str) parse(#str)
+#+END_SRC
+
+**** Environment
+
+#+BEGIN_SRC C :tangle env.c :comments both :exports both
+  typedef struct env{
+      char *name;
+      LLVMValueRef value;
+      struct env *next;
+  } Env;
+  
+  Env *global_env=0;
+
+  void add_var(char *name,LLVMValueRef value){
+      Env *e=(Env *)malloc(sizeof(Env));
+      e->name=name;
+      e->value=value;
+      e->next=global_env;
+      global_env=e;
+  }
+
+  LLVMValueRef get_var(char *name){
+      for(Env *e=global_env;e;e=e->next)
+          if(!strcmp(e->name,name))
+              return e->value;
+      return 0;
+  }
+
+  void free_env(){
+      for(Env *e=global_env;e;e=e->next)
+          free(e);
+  }
+
 #+END_SRC
 
 **** Compiler
@@ -240,390 +277,294 @@ programs, but it is not guaranteed to parse incorrect programs.
   #include <ctype.h>
   #include <stdlib.h>
   #include "parser.c"
-
-  // environment is linked list of variable names and their values
-  typedef struct env{
-    char *name;
-    LLVMValueRef value;
-    struct env *next;
-  } Env;
-
-  Env *global_env=0;
-  // add variable to environment
-  void add_var(char *name,LLVMValueRef value){
-    Env *e=(Env *)malloc(sizeof(Env));
-    e->name=name;
-    e->value=value;
-    e->next=global_env;
-    global_env=e;
-  }
-
-  LLVMValueRef get_var(char *name){
-    for(Env *e=global_env;e;e=e->next)
-      if(!strcmp(e->name,name))
-    return e->value;
-    return 0;
-  }
-
-  void free_env(){
-    for(Env *e=global_env;e;e=e->next)
-      free(e);
-  }
-
-  int atomeq(SExpr atom,char *str){
-    if(atom.type==ATOM)
-      return !strcmp(str,(char *)atom.ptr);
-    return 0;
-  }
+  #include "env.c"
 
   LLVMTypeRef compile_type(SExpr sexp){
-  printf("compile_type: ");
-    prints(sexp);
-    if(sexp.ptr==0)
-      return LLVMVoidType();
-    if(sexp.type==ATOM){
-      if(atomeq(sexp,"<i8>"))
-    return LLVMInt8Type();
-      else if(atomeq(sexp,"<i16>"))
-    return LLVMInt16Type();
-      else if(atomeq(sexp,"<i32>"))
-    return LLVMInt32Type();
-      else if(atomeq(sexp,"<i64>"))
-    return LLVMInt64Type();
-      else if(atomeq(sexp,"<f32>"))
-    return LLVMFloatType();
-      else if(atomeq(sexp,"<f64>"))
-    return LLVMDoubleType();
-      else if(atomeq(sexp,"<void>"))
-    return LLVMVoidType();
-      return 0;
-    }else if(sexp.type==LIST){
-      SExpr *p=(SExpr *)sexp.ptr;
-      if(atomeq(p[0],"<ptr>")){
-    LLVMTypeRef t=compile_type(p[1]);
-    if(!t)
-      t=LLVMVoidType();
-    return LLVMPointerType(t,0);
-      }else if(atomeq(p[0],"<fn>")){
-    LLVMTypeRef ret=compile_type(p[1]);
-    if(!ret)
-      return LLVMFunctionType(LLVMVoidType(),0,0,0);
-    LLVMTypeRef *args=0;
-    size_t argn;
-    for(argn=0;p[argn+2].ptr;argn++);
-    args=malloc(argn*sizeof(LLVMTypeRef));
-    for(size_t i=0;i<argn;i++)
-      args[i]=compile_type(p[i+2]);
-    LLVMTypeRef fn=LLVMFunctionType(ret,args,argn,0);
-    free(args);
-    return fn;
+      if(sexp.ptr==0)
+          return LLVMVoidType();
+      if(sexp.type==ATOM){
+          if(atomeq(sexp,"<i8>"))
+              return LLVMInt8Type();
+          else if(atomeq(sexp,"<i16>"))
+              return LLVMInt16Type();
+          else if(atomeq(sexp,"<i32>"))
+              return LLVMInt32Type();
+          else if(atomeq(sexp,"<i64>"))
+              return LLVMInt64Type();
+          else if(atomeq(sexp,"<f32>"))
+              return LLVMFloatType();
+          else if(atomeq(sexp,"<f64>"))
+              return LLVMDoubleType();
+          else if(atomeq(sexp,"<void>"))
+              return LLVMVoidType();
+          return 0;
+      }else if(sexp.type==LIST){
+          SExpr *p=(SExpr *)sexp.ptr;
+          if(atomeq(p[0],"<ptr>")){
+              LLVMTypeRef t=compile_type(p[1]);
+              if(!t)
+                  t=LLVMVoidType();
+              return LLVMPointerType(t,0);
+          }else if(atomeq(p[0],"<fn>")){
+              LLVMTypeRef ret=compile_type(p[1]);
+              if(!ret)
+                  return LLVMFunctionType(LLVMVoidType(),0,0,0);
+              LLVMTypeRef *args=0;
+              size_t argn;
+              for(argn=0;p[argn+2].ptr;argn++);
+              args=malloc(argn*sizeof(LLVMTypeRef));
+              for(size_t i=0;i<argn;i++)
+                  args[i]=compile_type(p[i+2]);
+              LLVMTypeRef fn=LLVMFunctionType(ret,args,argn,0);
+              free(args);
+              return fn;
+          }
       }
-    }
-    printf("unknown type: \n");
-    prints(sexp);
-    return 0;
+      printf("unknown type: \n");
+      prints(sexp);
+      return 0;
   }
-  LLVMValueRef compile_value(LLVMBuilderRef builder,SExpr sexp){
-    printf("compile_value: ");
-    prints(sexp);
-    if(sexp.type==ATOM){
-      // if atom is a number, return constant
-      if(isdigit(*(char *)sexp.ptr))
-    return LLVMConstInt(LLVMInt32Type(),atoi((char *)sexp.ptr),0);
-      // if atom is a string, return constant
-      else if(*(char *)sexp.ptr=='"')
-    return LLVMConstString((char *)sexp.ptr+1,strlen((char *)sexp.ptr)-2,0);
-      // if atom is a variable, return load instruction
-      // get current function
-      //LLVMValueRef func=LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder));
-      // get module
-      //LLVMModuleRef mod=LLVMGetGlobalParent(func);
-      // get value allocated in module by name
-      LLVMValueRef val=get_var((char *)sexp.ptr);
-      // LLVMBuildLoad2(builder,LLVMTypeOf(val),val,"");
-      return val;
-      //return LLVMBuildLoad2(builder,LLVMTypeOf(val),val,"");
-      //return LLVMBuildLoad(builder,val,(char *)sexp.ptr);
-
-    }
-    printf("unknown value: \n");
-    prints(sexp);
-    return 0;
+  LLVMValueRef compile_value(SExpr sexp){
+      if(sexp.type==ATOM){
+          if(isdigit(*(char *)sexp.ptr))
+              return LLVMConstInt(LLVMInt32Type(),atoi((char *)sexp.ptr),0);
+          else if(*(char *)sexp.ptr=='"')
+              return LLVMConstString((char *)sexp.ptr+1,strlen((char *)sexp.ptr)-2,0);
+          else
+              return get_var((char *)sexp.ptr);
+      }
+      printf("unknown value: \n");
+      prints(sexp);
+      return 0;
   }
-
-
 
   void compile_instr(LLVMBuilderRef builder,SExpr sexp){
-    printf("compile_instr: ");
-    prints(sexp);
-    // get current module
-    LLVMModuleRef module=LLVMGetGlobalParent(LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder)));
-    //LLVMValueRef function =LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder));
-    if(sexp.type==LIST){
-      SExpr *list=(SExpr *)sexp.ptr;
-      if(atomeq(list[0],"ret")){
-    LLVMValueRef ret=compile_value(builder,list[1]);
-    LLVMBuildRet(builder,ret);
-      }else if(atomeq(list[0],"br")){
-    // br <label> | br <cond> <label> <label>
-    if(list[1].type==ATOM){
-      LLVMBuildBr(builder,(LLVMBasicBlockRef)get_var((char *)list[1].ptr));
-    }else{
-      LLVMValueRef cond=compile_value(builder,list[1]);
-      LLVMBuildCondBr(builder,cond,(LLVMBasicBlockRef)get_var((char *)list[2].ptr),(LLVMBasicBlockRef)get_var((char *)list[3].ptr));
-    }
-      }else if(atomeq(list[0],"add")){
-    // second elem is type
-    //LLVMTypeRef type=compile_type(list[1]);
-    // third elem is name of variable to store result
-    char *name=(char *)list[2].ptr;
-    // fourth elem is first operand
-    LLVMValueRef op1=compile_value(builder,list[3]);
-    // fifth elem is second operand
-    LLVMValueRef op2=compile_value(builder,list[4]);
-    // build add instruction
-    LLVMValueRef add=LLVMBuildAdd(builder,op1,op2,name);
-    // store result in variable in env
-    add_var(name,add);
-      }else if(atomeq(list[0],"sub")){
-    //LLVMTypeRef type=compile_type(list[1]);
-    char *name=(char *)list[2].ptr;
-    LLVMValueRef op1=compile_value(builder,list[3]);
-    LLVMValueRef op2=compile_value(builder,list[4]);
-    LLVMValueRef sub=LLVMBuildSub(builder,op1,op2,name);
-    add_var(name,sub);
-      }else if(atomeq(list[0],"mul")){
-    //LLVMTypeRef type=compile_type(list[1]);
-    char *name=(char *)list[2].ptr;
-    LLVMValueRef op1=compile_value(builder,list[3]);
-    LLVMValueRef op2=compile_value(builder,list[4]);
-    LLVMValueRef mul=LLVMBuildMul(builder,op1,op2,name);
-    add_var(name,mul);
-      }else if(atomeq(list[0],"div")){
-    //LLVMTypeRef type=compile_type(list[1]);
-    char *name=(char *)list[2].ptr;
-    LLVMValueRef op1=compile_value(builder,list[3]);
-    LLVMValueRef op2=compile_value(builder,list[4]);
-    LLVMValueRef div=LLVMBuildSDiv(builder,op1,op2,name);
-    add_var(name,div);
-      }else if(atomeq(list[0],"call")){
-    // second elem is name of variable to store result
-    char *name=(char *)list[1].ptr;
-    // third elem is name of function to call
-    char *fname=(char *)list[2].ptr;
-    // rest of list is arguments
-    size_t n_args=0;
-    for(SExpr *i=list+3;i->ptr;i++)
-      n_args++;
-    LLVMValueRef *args=malloc(n_args*sizeof(LLVMValueRef));
-    for(size_t i=0;i<n_args;i++)
-      args[i]=compile_value(builder,list[i+2]);
-    // get function to call
-    LLVMValueRef func=LLVMGetNamedFunction(module,fname);
-    // function type
-    LLVMTypeRef type=LLVMGetReturnType(LLVMGetElementType(LLVMTypeOf(func)));
-    // build call instruction using LLVMCallConv2
-    LLVMValueRef call=LLVMBuildCall2(builder,type,func,args,n_args,(char *)list[1].ptr);
-    //	LLVMValueRef call=LLVMBuildCall(builder,LLVMGetNamedFunction(module,fname),args,n_args,(char *)list[1].ptr);
-    // store result in variable in env
-    add_var(name,call);
-    free(args);
-      }else if(atomeq(list[0],"load")){
-    // second elem is name of variable to store result
-    char *rname=(char *)list[1].ptr;
-    // third elem is name of variable to load
-    char *name=(char *)list[2].ptr;
-    LLVMValueRef load=LLVMBuildLoad2(builder, LLVMTypeOf(get_var(name)),get_var(name),name);
-    //LLVMValueRef load=LLVMBuildLoad(builder,get_var(name),name);
-    add_var(rname,load);
-      }else if(atomeq(list[0],"store")){
-    // second elem is name of variable to store
-    char *name=(char *)list[1].ptr;
-    // third elem is value to store
-    LLVMValueRef value=compile_value(builder,list[2]);
-    LLVMBuildStore(builder,value,get_var(name));
+      LLVMModuleRef module=LLVMGetGlobalParent(LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder)));
+      if(sexp.type==LIST){
+          SExpr *list=(SExpr *)sexp.ptr;
+          if(atomeq(list[0],"ret")){
+              LLVMValueRef ret=compile_value(list[1]);
+              LLVMBuildRet(builder,ret);
+          }else if(atomeq(list[0],"br")){
+              // br <label> | br <cond> <label> <label>
+              if(list[1].type==ATOM){
+                  LLVMBuildBr(builder,(LLVMBasicBlockRef)get_var((char *)list[1].ptr));
+              }else{
+                  LLVMValueRef cond=compile_value(list[1]);
+                  LLVMBuildCondBr(builder,cond,(LLVMBasicBlockRef)get_var((char *)list[2].ptr),(LLVMBasicBlockRef)get_var((char *)list[3].ptr));
+              }
+          }else if(atomeq(list[0],"add")){
+              char *name=(char *)list[1].ptr;
+              LLVMValueRef op1=compile_value(list[2]);
+              LLVMValueRef op2=compile_value(list[3]);
+              LLVMValueRef add=LLVMBuildAdd(builder,op1,op2,name);
+              add_var(name,add);
+          }else if(atomeq(list[0],"sub")){
+              char *name=(char *)list[1].ptr;
+              LLVMValueRef op1=compile_value(list[2]);
+              LLVMValueRef op2=compile_value(list[3]);
+              LLVMValueRef sub=LLVMBuildSub(builder,op1,op2,name);
+              add_var(name,sub);
+          }else if(atomeq(list[0],"mul")){
+              char *name=(char *)list[1].ptr;
+              LLVMValueRef op1=compile_value(list[2]);
+              LLVMValueRef op2=compile_value(list[3]);
+              LLVMValueRef mul=LLVMBuildMul(builder,op1,op2,name);
+              add_var(name,mul);
+          }else if(atomeq(list[0],"div")){
+              char *name=(char *)list[1].ptr;
+              LLVMValueRef op1=compile_value(list[2]);
+              LLVMValueRef op2=compile_value(list[3]);
+              LLVMValueRef div=LLVMBuildUDiv(builder,op1,op2,name);
+              add_var(name,div);
+          }else if(atomeq(list[0],"call")){
+              char *name=(char *)list[1].ptr;
+              // third elem is name of function to call
+              char *fname=(char *)list[2].ptr;
+              // rest of list is arguments
+              size_t n_args=0;
+              for(SExpr *i=list+3;i->ptr;i++)
+                  n_args++;
+              LLVMValueRef *args=malloc(n_args*sizeof(LLVMValueRef));
+              for(size_t i=0;i<n_args;i++)
+                  args[i]=compile_value(list[i+2]);
+              LLVMValueRef func=LLVMGetNamedFunction(module,fname);
+              LLVMTypeRef type=LLVMGetReturnType(LLVMGetElementType(LLVMTypeOf(func)));
+              LLVMValueRef call=LLVMBuildCall2(builder,type,func,args,n_args,(char *)list[1].ptr);
+              add_var(name,call);
+              free(args);
+          }else if(atomeq(list[0],"load")){
+              // second elem is name of variable to store result
+              char *rname=(char *)list[1].ptr;
+              // third elem is name of variable to load
+              char *name=(char *)list[2].ptr;
+              LLVMValueRef load=LLVMBuildLoad2(builder, LLVMTypeOf(get_var(name)),get_var(name),name);
+              add_var(rname,load);
+          }else if(atomeq(list[0],"store")){
+              // second elem is name of variable to store
+              char *name=(char *)list[1].ptr;
+              // third elem is value to store
+              LLVMValueRef value=compile_value(list[2]);
+              LLVMBuildStore(builder,value,get_var(name));
+          }
       }
-    }
   }
 
   void compile_block(LLVMValueRef function,SExpr sexp){
-    printf("compile_block: ");
-    prints(sexp);
-    if(sexp.type==LIST){
-      SExpr *list=(SExpr *)sexp.ptr;
-      if(atomeq(list[0],"block")){
-    // create builder
-    LLVMBuilderRef builder=LLVMCreateBuilder();
-    // second elem in list is name of block
-    LLVMBasicBlockRef block=LLVMAppendBasicBlock(function,(char *)list[1].ptr);
-    LLVMPositionBuilderAtEnd(builder,block);
-    for(SExpr *i=list+2;i->ptr;i++)
-      compile_instr(builder,*i);
+      if(sexp.type==LIST){
+          SExpr *list=(SExpr *)sexp.ptr;
+          if(atomeq(list[0],"block")){
+              LLVMBuilderRef builder=LLVMCreateBuilder();
+              LLVMBasicBlockRef block=LLVMAppendBasicBlock(function,(char *)list[1].ptr);
+              LLVMPositionBuilderAtEnd(builder,block);
+              for(SExpr *i=list+2;i->ptr;i++)
+                  compile_instr(builder,*i);
 
+          }
       }
-    }
   }
 
   void compile_global(LLVMModuleRef module,SExpr sexp){
-    printf("compile_global: ");
-    prints(sexp);
-    if(sexp.type==LIST){
-      SExpr *list=(SExpr *)sexp.ptr;
-      if(atomeq(list[0],"function")){
-    SExpr *signatures=(SExpr *)list[1].ptr;
-    // signatures is list of ((name type) ...)
-    //first signature is return type and name of function
-    char *name;
-    LLVMTypeRef rettype;
-    if(signatures[0].type==LIST) {
-      SExpr *namesig = (SExpr *) signatures[0].ptr;
-      name = (char *) namesig[0].ptr;
-      rettype = compile_type(namesig[1]);
-    } else{
-      name=(char *)signatures[0].ptr;
-      rettype=LLVMVoidType();
-    }
-    size_t n_args=0;
-    for(SExpr *i=signatures+1;i->ptr;i++)
-      n_args++;
-    LLVMTypeRef *argtypes=malloc(n_args*sizeof(LLVMTypeRef));
-    for(size_t i=0;i<n_args;i++)
-      argtypes[i]=compile_type(((SExpr *)signatures[i+1].ptr)[1]);
-    LLVMTypeRef functype=LLVMFunctionType(rettype,argtypes,n_args,0);
-    LLVMValueRef function=LLVMAddFunction(module,name,functype);
-    for(size_t i=0;i<n_args;i++){
-      LLVMValueRef arg=LLVMGetParam(function,i);
-      LLVMSetValueName(arg,((char *)(((SExpr *)signatures[i+1].ptr)[0].ptr)));
-    }
-    for(SExpr *body=list+2;body->ptr;body++)
-      compile_block(function,*body);
-    free(argtypes);
+      if(sexp.type==LIST){
+          SExpr *list=(SExpr *)sexp.ptr;
+          if(atomeq(list[0],"function")){
+              SExpr *signatures=(SExpr *)list[1].ptr;
+              char *name;
+              LLVMTypeRef rettype;
+              if(signatures[0].type==LIST) {
+                  SExpr *namesig = (SExpr *) signatures[0].ptr;
+                  name = (char *) namesig[0].ptr;
+                  rettype = compile_type(namesig[1]);
+              } else{
+                  name=(char *)signatures[0].ptr;
+                  rettype=LLVMVoidType();
+              }
+              size_t n_args=0;
+              for(SExpr *i=signatures+1;i->ptr;i++)
+                  n_args++;
+              LLVMTypeRef *argtypes=malloc(n_args*sizeof(LLVMTypeRef));
+              for(size_t i=0;i<n_args;i++)
+                  argtypes[i]=compile_type(((SExpr *)signatures[i+1].ptr)[1]);
+              LLVMTypeRef functype=LLVMFunctionType(rettype,argtypes,n_args,0);
+              LLVMValueRef function=LLVMAddFunction(module,name,functype);
+              for(size_t i=0;i<n_args;i++){
+                  LLVMValueRef arg=LLVMGetParam(function,i);
+                  LLVMSetValueName(arg,((char *)(((SExpr *)signatures[i+1].ptr)[0].ptr)));
+              }
+              for(SExpr *body=list+2;body->ptr;body++)
+                  compile_block(function,*body);
+              free(argtypes);
+          }
       }
-    }
   }
 
   LLVMModuleRef compile_module(SExpr sexp){
-    printf("compile_module: ");
-    prints(sexp);
-    if(sexp.type==LIST){
-      SExpr *list=(SExpr *)sexp.ptr;
-      if(atomeq(list[0],"module")){
-    LLVMModuleRef module=LLVMModuleCreateWithName((char *)list[1].ptr);
-    for(SExpr *i=list+2;i->ptr;i++)
-      compile_global(module,*i);
-    return module;
+      if(sexp.type==LIST){
+          SExpr *list=(SExpr *)sexp.ptr;
+          if(atomeq(list[0],"module")){
+              LLVMModuleRef module=LLVMModuleCreateWithName((char *)list[1].ptr);
+              for(SExpr *i=list+2;i->ptr;i++)
+                  compile_global(module,*i);
+              return module;
+          }
       }
-    }
-    return 0;
+      return 0;
   }
 #+END_SRC
-
 
 **** CLI
 
 #+BEGIN_SRC C :tangle cli.c :comments both :exports both
-  #include <llvm-c/Core.h>
-  #include <llvm-c/ExecutionEngine.h>
-  #include <llvm-c/Target.h>
-  #include <llvm-c/Analysis.h>
-  #include <llvm-c/BitWriter.h>
-  #include <ctype.h>
-  #include <stdlib.h>
   #include "compiler.c"
-  // usage: ./compiler [args] <file>
-  // supported args:
-  // -o <file> : output file
-  // -d : dump llvm ir
 
-  int main(int argc,char **argv){
-    // parse args
-    char *infile=0;
-    char *outfile=0;
-    int dump=0;
-    for(int i=1;i<argc;i++){
-      if(!strcmp(argv[i],"-o")){
-    outfile=argv[++i];
-      }else if(!strcmp(argv[i],"-d")){
-    dump=1;
-      }else{
-    infile=argv[i];
+  int cli(int argc,char **argv){
+      char *infile=0;
+      char *outfile=0;
+      int dump=0;
+      for(int i=1;i<argc;i++){
+          if(!strcmp(argv[i],"-o")){
+              outfile=argv[++i];
+          }else if(!strcmp(argv[i],"-d")){
+              dump=1;
+          }else{
+              infile=argv[i];
+          }
       }
-    }
-    if(!infile){
-      printf("usage: %s [args] <file>\n",argv[0]);
-      printf("supported args: \n"
-         "-o <file> : output file\n"
-         "-d : dump llvm ir\n");
-      return 1;
-    }
-    // read file
-    FILE *f=fopen(infile,"r");
-    if(!f){
-      printf("could not open file %s\n",infile);
-      return 1;
-    }
-    fseek(f,0,SEEK_END);
-    size_t size=ftell(f);
-    fseek(f,0,SEEK_SET);
-    char *buf=malloc(size+1);
-    fread(buf,1,size,f);
-    buf[size]=0;
-    fclose(f);
-    // parse file
-    SExpr sexp=parse(buf);
-    free(buf);
-    // compile
-    LLVMModuleRef module=compile_module(sexp);
-    free_sexpr(sexp);
-    // dump ir
-    if(dump){
-      LLVMDumpModule(module);
-    }
-    // compile to file
-    if(outfile){
-      char *error=0;
-      LLVMVerifyModule(module,LLVMReturnStatusAction,&error);
-      if(error && strcmp(error,"")){
-    printf("error1: %s\n",error);
-    return 1;
+      if(!infile){
+          printf("usage: %s [args] <file>\n",argv[0]);
+          printf("supported args: \n"
+                 "-o <file> : output file\n"
+                 "-d : dump llvm ir\n");
+          return 1;
       }
-      LLVMInitializeNativeTarget();
-      LLVMTargetRef target;
-      char *triple=LLVMGetDefaultTargetTriple();
-      LLVMGetTargetFromTriple(triple,&target,&error);
-      if(error && strcmp(error,"")){
-    printf("error2: %s\n",error);
-    return 1;
+      // read file
+      FILE *f=fopen(infile,"r");
+      if(!f){
+          printf("could not open file %s\n",infile);
+          return 1;
       }
-      char *cpu=LLVMGetHostCPUName();
-      char *features=LLVMGetHostCPUFeatures();
-      LLVMTargetMachineRef machine=LLVMCreateTargetMachine(target,triple,cpu,features,LLVMCodeGenLevelDefault,LLVMRelocDefault,LLVMCodeModelDefault);
-      LLVMTargetDataRef data=LLVMCreateTargetDataLayout(machine);
-      LLVMSetModuleDataLayout(module,data);
-      LLVMDisposeTargetData(data);
-      LLVMDisposeTargetMachine(machine);
-      free(cpu);
-      free(features);
-      free(triple);
-      if(0){
-    LLVMInitializeNativeTarget();
-    LLVMInitializeNativeAsmPrinter();
-    LLVMInitializeNativeAsmParser();
-    LLVMExecutionEngineRef engine;
-    if(LLVMCreateJITCompilerForModule(&engine,module,0,&error)){
-      printf("error: %s\n",error);
-      return 1;
-    }
-    LLVMRunFunction(engine,LLVMGetNamedFunction(module,"main"),0,0);
-    LLVMDisposeExecutionEngine(engine);
-      }else{
-    LLVMTargetMachineEmitToFile(machine,module,outfile,LLVMObjectFile,0);
+      fseek(f,0,SEEK_END);
+      size_t size=ftell(f);
+      fseek(f,0,SEEK_SET);
+      char *buf=malloc(size+1);
+      fread(buf,1,size,f);
+      buf[size]=0;
+      fclose(f);
+      // parse file
+      SExpr sexp=parse(buf);
+      free(buf);
+      // compile
+      LLVMModuleRef module=compile_module(sexp);
+      free_sexpr(sexp);
+      // dump ir
+      if(dump){
+          LLVMDumpModule(module);
       }
-    }
-    // cleanup
-    LLVMDisposeModule(module);
-    free_env();
-    return 0;
+      // compile to file
+      if(outfile){
+          char *error=0;
+          LLVMVerifyModule(module,LLVMReturnStatusAction,&error);
+          if(error && strcmp(error,"")){
+              printf("error1: %s\n",error);
+              return 1;
+          }
+          LLVMInitializeNativeTarget();
+          LLVMTargetRef target;
+          char *triple=LLVMGetDefaultTargetTriple();
+          LLVMGetTargetFromTriple(triple,&target,&error);
+          if(error && strcmp(error,"")){
+              printf("error2: %s\n",error);
+              return 1;
+          }
+          char *cpu=LLVMGetHostCPUName();
+          char *features=LLVMGetHostCPUFeatures();
+          LLVMTargetMachineRef machine=LLVMCreateTargetMachine(target,triple,cpu,features,LLVMCodeGenLevelDefault,LLVMRelocDefault,LLVMCodeModelDefault);
+          LLVMTargetDataRef data=LLVMCreateTargetDataLayout(machine);
+          LLVMSetModuleDataLayout(module,data);
+          LLVMDisposeTargetData(data);
+          LLVMDisposeTargetMachine(machine);
+          free(cpu);
+          free(features);
+          free(triple);
+          if(0){
+              LLVMInitializeNativeTarget();
+              LLVMInitializeNativeAsmPrinter();
+              LLVMInitializeNativeAsmParser();
+              LLVMExecutionEngineRef engine;
+              if(LLVMCreateJITCompilerForModule(&engine,module,0,&error)){
+                  printf("error: %s\n",error);
+                  return 1;
+              }
+              LLVMRunFunction(engine,LLVMGetNamedFunction(module,"main"),0,0);
+              LLVMDisposeExecutionEngine(engine);
+          }else{
+              LLVMTargetMachineEmitToFile(machine,module,outfile,LLVMObjectFile,0);
+          }
+      }
+      // cleanup
+      LLVMDisposeModule(module);
+      free_env();
+      return 0;
 
   }
 #+END_SRC
@@ -631,20 +572,10 @@ programs, but it is not guaranteed to parse incorrect programs.
 **** main
 
 #+BEGIN_SRC C :tangle main.c :comments both
-#include "compiler.c"
-int main(){
-    SExpr sexp=parse("(module test (function ((main <i32>)) (block entry (ret 0))))");
-    prints(sexp);
-    //
-    LLVMModuleRef module=compile_module(sexp);
-    // dump ir
-    LLVMDumpModule(module);
-    //cleanup
-    LLVMDisposeModule(module);
-    free_env();
-    free_sexpr(sexp);
-    return 0;
-}
+  #include "cli.c"
+  int main(int argc,char **argv){
+      return cli(argc,argv);
+  }
 #+END_SRC
 
 
@@ -653,28 +584,26 @@ int main(){
 ***** CMakeLists.txt
 
 #+BEGIN_SRC sh :tangle CMakeLists.txt :comments both :exports both
-cmake_minimum_required(VERSION 3.4.3)
-project(slang)
+  cmake_minimum_required(VERSION 3.4.3)
+  project(slang)
 
-find_package(LLVM REQUIRED)
+  find_package(LLVM REQUIRED)
 
-include_directories(${LLVM_INCLUDE_DIRS})
-add_definitions(${LLVM_DEFINITIONS})
+  include_directories(${LLVM_INCLUDE_DIRS})
+  add_definitions(${LLVM_DEFINITIONS})
 
-add_executable(main main.c)
+  add_executable(slang main.c)
 
-llvm_map_components_to_libnames(llvm_libs support core irreader executionengine interpreter mc nativecodegen)
+  llvm_map_components_to_libnames(llvm_libs support core irreader executionengine interpreter mc nativecodegen)
 
-target_link_libraries(main ${llvm_libs})
+  target_link_libraries(slang ${llvm_libs})
 #+END_SRC
 
 ***** build.sh
 
-#+BEGIN_SRC sh :tangle build.sh :comments both :exports both
-  #!/bin/sh
+#+BEGIN_SRC sh :tangle build.sh :comments both :exports both :shebang #!/bin/sh
   mkdir -p build
   cd build
-  ## build folder for cmake is build
   cmake ..
   make
 #+END_SRC
@@ -689,6 +618,7 @@ lisps.
 
 Scheme is existing lisp dialect. The goal is to be able to transform it to
 SEIR.
+
 
 
 

@@ -10,9 +10,9 @@ find_package(LLVM REQUIRED)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_executable(main main.c)
+add_executable(slang main.c)
 
 llvm_map_components_to_libnames(llvm_libs support core irreader executionengine interpreter mc nativecodegen)
 
-target_link_libraries(main ${llvm_libs})
+target_link_libraries(slang ${llvm_libs})
 # CMakeLists.txt:1 ends here
