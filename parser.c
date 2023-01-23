@@ -6,7 +6,6 @@
 
 
 /* [[file:README.org::*Parser][Parser:1]] */
-#pragma once
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
@@ -19,15 +18,16 @@ typedef struct s_expr{
   } type;
   void * ptr;
 } SExpr;
-
-SExpr make_atom(char *str,size_t n){
+/*
+  SExpr make_atom(char *str,size_t n){
   char *atom=(char *)malloc(n+1);
   strncpy(atom,str,n);
   atom[n]=0;
   SExpr a;
   a.type=ATOM;
   a.ptr=(void *)atom;
-}
+  return a;
+  }*/
 
 SExpr parse_expr(char ** str);
 
@@ -38,7 +38,7 @@ SExpr parse_atom(char ** str){
   switch (**str) {
   case '"':
     for(i=1;(*str)[i]!='"';i++)
-      if((*str)[i]=='\\')
+  if((*str)[i]=='\\')
 	i++;
     i++;
     atom.ptr=malloc(i+1);
@@ -63,22 +63,22 @@ SExpr parse_list(char **str){
   size_t a_len=0;
   size_t m_len=1;
   list.ptr= malloc(m_len*sizeof(SExpr)+1);
-  SExpr *p=(SExpr *)list.ptr;
+  //SExpr *p=(SExpr *)list.ptr;
   while(1){
     for(;iswspace(**str);(*str)++);
     if(**str==')'){
-      (*str)++;
-      SExpr nil;
-      nil.type=LIST;
-      nil.ptr=0;
-      ((SExpr *)list.ptr)[a_len]=nil;
-      return list;
+  (*str)++;
+  SExpr nil;
+  nil.type=LIST;
+  nil.ptr=0;
+  ((SExpr *)list.ptr)[a_len]=nil;
+  return list;
     }
     ((SExpr *)list.ptr)[a_len]= parse_expr(str);
     a_len++;
     if(a_len==m_len){
-      m_len*=2;
-      list.ptr= realloc(list.ptr,m_len*sizeof(SExpr)+1);
+  m_len*=2;
+  list.ptr= realloc(list.ptr,m_len*sizeof(SExpr)+1);
     }
   }
 }
@@ -109,9 +109,9 @@ void print_sexpr(SExpr sexp){
   else if(sexp.type==LIST) {
     printf("(");
     for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++) {
-      if(i!=sexp.ptr)
+  if(i!=sexp.ptr)
 	printf(" ");
-      print_sexpr(*i);
+  print_sexpr(*i);
     }
     printf(")");
   }
@@ -125,7 +125,7 @@ void prints(SExpr sexp){
 void free_sexpr(SExpr sexp){
   if(sexp.type==LIST)
     for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++)
-      free_sexpr(*i);
+  free_sexpr(*i);
   char *c=(char *)sexp.ptr;
   if(sexp.ptr)
     free(c);
