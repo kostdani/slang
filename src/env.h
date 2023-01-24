@@ -1,7 +1,16 @@
 /* Environment */
 
+/* Environment is implemented as a linked list of name and value pairs. It is */
+/* possible to define new variables and functions in the environment. It is also */
+/* possible to lookup variables and functions in the environment. */
 
-/* [[file:README.org::*Environment][Environment:1]] */
+
+/* [[file:../README.org::*Environment][Environment:1]] */
+#pragma once
+#include <llvm-c/Core.h>
+#include <malloc.h>
+#include <string.h>
+
 typedef struct env{
     char *name;
     LLVMValueRef value;

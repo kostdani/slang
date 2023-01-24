@@ -3,6 +3,7 @@
 
 # [[file:README.org::*CMakeLists.txt][CMakeLists.txt:1]]
 cmake_minimum_required(VERSION 3.4.3)
+
 project(slang)
 
 find_package(LLVM REQUIRED)
@@ -10,7 +11,7 @@ find_package(LLVM REQUIRED)
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_executable(slang main.c)
+add_executable(slang src/main.c)
 
 llvm_map_components_to_libnames(llvm_libs support core irreader executionengine interpreter mc nativecodegen)
 

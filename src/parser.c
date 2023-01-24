@@ -4,16 +4,48 @@
 /* possible and does not support any error recovery. It should be able to parse correct */
 /* programs, but it is not guaranteed to parse incorrect programs. */
 
+/* Context free grammar used to implement parser: */
 
-/* [[file:README.org::*Parser][Parser:1]] */
-#include <stdio.h>
-#include <malloc.h>
-#include <string.h>
+/* [[file:../README.org::*Parser][Parser:1]] */
 #include <wctype.h>
-#include "ast.c"
+#include "ast.h"
 
 SExpr parse_expr(char ** str);
+SExpr parse_list(char ** str);
+SExpr parse_atom(char ** str);
+SExpr parse(char *s){
+    size_t l=strlen(s);
+    char *ostr=(char *)malloc(l+1);
+    char *str=ostr;
+    strcpy(str,s);
+    str[l]=0;
+    SExpr ast= parse_expr(&str);
+    free(ostr);
+    return ast;
+}
 
+#define LISP(str) parse(#str)
+/* Parser:1 ends here */
+
+
+/* - Expression = Atom | List */
+
+/* [[file:../README.org::*Parser][Parser:2]] */
+SExpr parse_expr(char ** str){
+    for(;iswspace(**str);(*str)++);
+    if(**str=='(')
+        return parse_list(str);
+    else
+        return parse_atom(str);
+}
+/* Parser:2 ends here */
+
+
+/* - Atom = string | symbol */
+/*   - string = '"' {any character except '"' } | '\\' {any character} '"' */
+/*   - symbol = {any character except '(', ')', ' ', '\t', '\n', '\r'} */
+
+/* [[file:../README.org::*Parser][Parser:3]] */
 SExpr parse_atom(char ** str){
     size_t i;
     SExpr atom;
@@ -38,7 +70,12 @@ SExpr parse_atom(char ** str){
         return atom;
     }
 }
+/* Parser:3 ends here */
 
+
+/* List = "(" Expression* ")" */
+
+/* [[file:../README.org::*Parser][Parser:4]] */
 SExpr parse_list(char **str){
     (*str)++;
     SExpr list;
@@ -64,26 +101,4 @@ SExpr parse_list(char **str){
         }
     }
 }
-
-SExpr parse_expr(char ** str){
-    for(;iswspace(**str);(*str)++);
-    if(**str=='(')
-        return parse_list(str);
-    else
-        return parse_atom(str);
-
-}
-
-SExpr parse(char *s){
-    size_t l=strlen(s);
-    char *ostr=(char *)malloc(l+1);
-    char *str=ostr;
-    strcpy(str,s);
-    str[l]=0;
-    SExpr ast= parse_expr(&str);
-    free(ostr);
-    return ast;
-}
-
-#define LISP(str) parse(#str)
-/* Parser:1 ends here */
+/* Parser:4 ends here */

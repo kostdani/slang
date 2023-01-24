@@ -1,8 +1,11 @@
 /* CLI */
 
+/* Command line interface only supports dumping the LLVM IR. */
 
-/* [[file:README.org::*CLI][CLI:1]] */
+
+/* [[file:../README.org::*CLI][CLI:1]] */
 #include "compiler.c"
+#include "parser.c"
 
 int cli(int argc,char **argv){
     char *infile=0;

@@ -14,7 +14,7 @@ is written in C and uses LLVM C API. It is designed to be used as a CLI tool.
 
 * Languages
 
-** TODO SEIR
+** SEIR
 
 SEIR stands for S-Expression Intermediate Representation. It is designed
 to have s-expression syntax and as close to LLVM IR semantics as possible.
@@ -22,82 +22,18 @@ It is not intended to be used directly, but rather as a target language for
 other S-Expression languages which they can be transformed to using macros.
 Something liek assembly of lisps.
 
-*** TODO features
-
-**** Types
-
-all LLvM types are supported. They are represented as s-expression symbols
-starting with : and followed by type name.
-- :void - void type (can be omitted)
-- :i<width> - integer type with <width> bits
-- :u<width> - unsigned integer type with <width> bits
-- :f<width> - floating point type with <width> bits
-- (:pointer <type>) - pointer type to <type>
-- (:array <type> <size>) - array type with <size> elements of <type>
-- (:funtion <return-type> <arg1-type> <arg2-type> ...) - function type with
-  return type <return-type> and arguments of types <arg1-type> <arg2-type> ...
-- (:struct <field1-type> <field2-type> ...) - structure type with fields of
-  types <field1-type> <field2-type> ...
-  
-**** Functions
-
-Functions are defined using the following syntax:
-- (funtion ((name <return-type>) (<arg1-name> <arg1-type>) (<arg2-name> <arg2-type>) ...)
-  <body> ...)
-where <body> ... is list of blocks. Each block is defined using the following
-syntax:
-- (<name> <body> ...)
-where <body> ... is list of instructions. Instructions are used using the
-following syntax:
-- (<result> <instruction>)
-where <result> is the name of variable to store the result of instruction
-supported instructions are:
-- (ret <value>) - return instruction
-- (br <label>) - unconditional branch instruction
-- (br <cond> <label1> <label2>) - conditional branch instruction
-- (phi <type> <value1> <label1> <value2> <label2> ...) - phi instruction
-- (call <type> <function> <arg1> <arg2> ...) - call instruction
-- (load <type> <pointer>) - load instruction
-- (store <value> <pointer>) - store instruction
-- (getelementptr <type> <pointer> <index1> <index2> ...) - getelementptr
-  instruction
-- (add <type> <value1> <value2>) - add instruction
-- (sub <type> <value1> <value2>) - sub instruction
-- (mul <type> <value1> <value2>) - mul instruction
-- (sdiv <type> <value1> <value2>) - signed division instruction
-- (udiv <type> <value1> <value2>) - unsigned division instruction
-- (srem <type> <value1> <value2>) - signed remainder instruction
-- (urem <type> <value1> <value2>) - unsigned remainder instruction
-- (shl <type> <value1> <value2>) - shift left instruction
-- (lshr <type> <value1> <value2>) - logical shift right instruction
-- (ashr <type> <value1> <value2>) - arithmetic shift right instruction
-- (and <type> <value1> <value2>) - and instruction
-- (or <type> <value1> <value2>) - or instruction
-- (xor <type> <value1> <value2>) - xor instruction
-- (icmp <type> <cond> <value1> <value2>) - integer comparison instruction
-- (fcmp <type> <cond> <value1> <value2>) - floating point comparison
-  instruction
-- (select <type> <cond> <value1> <value2>) - select instruction
-- (alloca <type>) - alloca instruction
-- (alloca <type> <size>) - alloca instruction with size
-- (alloca <type> <size> <align>) - alloca instruction with size and alignment
-
-
-**** Structs
-
-Structs are defined using the following syntax:
-- (struct name (field1-mame field1-type) (field2-name field2-type) ...)
-
-**** Variables
-
-Variables are defined using the following syntax:
-
 *** Src
 
 **** AST
 
-#+BEGIN_SRC C :tangle ast.c :comments both :exports both
+Abstract syntax tree is maximally simplified. There are 2 types of nodes:
+- LIST - list of nodes
+- ATOM - atom node (leaf) storing a string
+
+#+BEGIN_SRC C :tangle src/ast.h :mkdirp yes :comments both :exports both
+  #pragma once
   #include <stdio.h>
+  #include <string.h>
   #include <malloc.h>
 
   typedef struct s_expr{
@@ -108,6 +44,22 @@ Variables are defined using the following syntax:
       void * ptr;
   } SExpr;
 
+  void free_sexpr(SExpr sexp){
+      if(sexp.type==LIST)
+          for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++)
+              free_sexpr(*i);
+      if(sexp.ptr)
+          free(sexp.ptr);
+  }
+  
+  #define atomeq(atom, str) (atom.type==ATOM && !strcmp(str,(char *)atom.ptr))
+#+END_SRC
+
+***** Printing
+
+Printing function is simple and prints the AST in a human readable form.
+
+#+BEGIN_SRC C :tangle src/ast.h :mkdirp yes :comments both :exports both
   void print_sexpr(SExpr sexp){
       if(sexp.type==ATOM)
           printf("%s",(char *)sexp.ptr);
@@ -121,26 +73,9 @@ Variables are defined using the following syntax:
           printf(")");
       }
   }
-
   void prints(SExpr sexp){
       print_sexpr(sexp);
       printf("\n");
-  }
-
-  void free_sexpr(SExpr sexp){
-      if(sexp.type==LIST)
-          for (SExpr *i = (SExpr *) sexp.ptr; i->ptr; i++)
-              free_sexpr(*i);
-      char *c=(char *)sexp.ptr;
-      if(sexp.ptr)
-          free(c);
-  }
-
-  
-  int atomeq(SExpr atom,char *str){
-      if(atom.type==ATOM)
-          return !strcmp(str,(char *)atom.ptr);
-      return 0;
   }
 #+END_SRC
 
@@ -150,15 +85,41 @@ Parser is implemented using recursive descent parser. It is as simple as
 possible and does not support any error recovery. It should be able to parse correct
 programs, but it is not guaranteed to parse incorrect programs.
 
-#+BEGIN_SRC C :tangle parser.c :comments both :exports both
-  #include <stdio.h>
-  #include <malloc.h>
-  #include <string.h>
+Context free grammar used to implement parser:
+#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
   #include <wctype.h>
-  #include "ast.c"
+  #include "ast.h"
 
   SExpr parse_expr(char ** str);
+  SExpr parse_list(char ** str);
+  SExpr parse_atom(char ** str);
+  SExpr parse(char *s){
+      size_t l=strlen(s);
+      char *ostr=(char *)malloc(l+1);
+      char *str=ostr;
+      strcpy(str,s);
+      str[l]=0;
+      SExpr ast= parse_expr(&str);
+      free(ostr);
+      return ast;
+  }
 
+  #define LISP(str) parse(#str)
+#+END_SRC
+  - Expression = Atom | List
+#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
+  SExpr parse_expr(char ** str){
+      for(;iswspace(**str);(*str)++);
+      if(**str=='(')
+          return parse_list(str);
+      else
+          return parse_atom(str);
+  }
+#+END_SRC
+  - Atom = string | symbol
+    - string = '"' {any character except '"' } | '\\' {any character} '"'
+    - symbol = {any character except '(', ')', ' ', '\t', '\n', '\r'}
+#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
   SExpr parse_atom(char ** str){
       size_t i;
       SExpr atom;
@@ -183,7 +144,9 @@ programs, but it is not guaranteed to parse incorrect programs.
           return atom;
       }
   }
-
+#+END_SRC
+  List = "(" Expression* ")"
+#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
   SExpr parse_list(char **str){
       (*str)++;
       SExpr list;
@@ -209,39 +172,26 @@ programs, but it is not guaranteed to parse incorrect programs.
           }
       }
   }
-
-  SExpr parse_expr(char ** str){
-      for(;iswspace(**str);(*str)++);
-      if(**str=='(')
-          return parse_list(str);
-      else
-          return parse_atom(str);
-
-  }
-
-  SExpr parse(char *s){
-      size_t l=strlen(s);
-      char *ostr=(char *)malloc(l+1);
-      char *str=ostr;
-      strcpy(str,s);
-      str[l]=0;
-      SExpr ast= parse_expr(&str);
-      free(ostr);
-      return ast;
-  }
-
-  #define LISP(str) parse(#str)
 #+END_SRC
 
 **** Environment
 
-#+BEGIN_SRC C :tangle env.c :comments both :exports both
+Environment is implemented as a linked list of name and value pairs. It is
+possible to define new variables and functions in the environment. It is also
+possible to lookup variables and functions in the environment.
+
+#+BEGIN_SRC C :tangle src/env.h :mkdirp yes :comments both :exports both
+  #pragma once
+  #include <llvm-c/Core.h>
+  #include <malloc.h>
+  #include <string.h>
+
   typedef struct env{
       char *name;
       LLVMValueRef value;
       struct env *next;
   } Env;
-  
+
   Env *global_env=0;
 
   void add_var(char *name,LLVMValueRef value){
@@ -263,12 +213,15 @@ programs, but it is not guaranteed to parse incorrect programs.
       for(Env *e=global_env;e;e=e->next)
           free(e);
   }
-
 #+END_SRC
 
 **** Compiler
 
-#+BEGIN_SRC C :tangle compiler.c :comments both :exports both
+Compiler is implemented using LLVM C API. It is not very efficient, but it is
+easy to use and understand. The goal is to bootstrap the compiler, better compiler
+will be implemented later in compiled language itself.
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
   #include <llvm-c/Core.h>
   #include <llvm-c/ExecutionEngine.h>
   #include <llvm-c/Target.h>
@@ -276,54 +229,123 @@ programs, but it is not guaranteed to parse incorrect programs.
   #include <llvm-c/BitWriter.h>
   #include <ctype.h>
   #include <stdlib.h>
-  #include "parser.c"
-  #include "env.c"
+  #include <string.h>
+  #include "ast.h"
+  #include "env.h"
+#+END_SRC
 
+***** Types
+
+compile type takes SExpr and returns LLVMTypeRef
+if SExpr is atom calls compile_atomic_type if SExpr is list calls compile_compound_type
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMTypeRef compile_atomic_type(SExpr type);
+  LLVMTypeRef compile_compound_type(SExpr* type);
   LLVMTypeRef compile_type(SExpr sexp){
-      if(sexp.ptr==0)
-          return LLVMVoidType();
-      if(sexp.type==ATOM){
-          if(atomeq(sexp,"<i8>"))
-              return LLVMInt8Type();
-          else if(atomeq(sexp,"<i16>"))
-              return LLVMInt16Type();
-          else if(atomeq(sexp,"<i32>"))
-              return LLVMInt32Type();
-          else if(atomeq(sexp,"<i64>"))
-              return LLVMInt64Type();
-          else if(atomeq(sexp,"<f32>"))
-              return LLVMFloatType();
-          else if(atomeq(sexp,"<f64>"))
-              return LLVMDoubleType();
-          else if(atomeq(sexp,"<void>"))
-              return LLVMVoidType();
-          return 0;
-      }else if(sexp.type==LIST){
-          SExpr *p=(SExpr *)sexp.ptr;
-          if(atomeq(p[0],"<ptr>")){
-              LLVMTypeRef t=compile_type(p[1]);
-              if(!t)
-                  t=LLVMVoidType();
-              return LLVMPointerType(t,0);
-          }else if(atomeq(p[0],"<fn>")){
-              LLVMTypeRef ret=compile_type(p[1]);
-              if(!ret)
-                  return LLVMFunctionType(LLVMVoidType(),0,0,0);
-              LLVMTypeRef *args=0;
-              size_t argn;
-              for(argn=0;p[argn+2].ptr;argn++);
-              args=malloc(argn*sizeof(LLVMTypeRef));
-              for(size_t i=0;i<argn;i++)
-                  args[i]=compile_type(p[i+2]);
-              LLVMTypeRef fn=LLVMFunctionType(ret,args,argn,0);
-              free(args);
-              return fn;
-          }
-      }
-      printf("unknown type: \n");
-      prints(sexp);
+      if(sexp.type==ATOM)
+          return compile_atomic_type(sexp);
+      else if(sexp.type==LIST)
+          return compile_compound_type((SExpr *)sexp.ptr);
+      return NULL;
+  }
+#+END_SRC
+
+****** supprted atomic types
+
+atomic type is stored as pair of name and LLVMTypeRef
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  struct{
+      char *name;
+       LLVMTypeRef (*fn)();
+  } types[]={
+      {"<i8>",LLVMInt8Type},
+      {"<i16>",LLVMInt16Type},
+      {"<i32>",LLVMInt32Type},
+      {"<i64>",LLVMInt64Type},
+      {"<f32>",LLVMFloatType},
+      {"<f64>",LLVMDoubleType},
+      {"<void>",LLVMVoidType},
+      {0,0}
+  };
+  LLVMTypeRef compile_atomic_type(SExpr sexp){
+      for(int i=0;types[i].name;i++)
+          if(atomeq(sexp,types[i].name))
+              return types[i].fn();
       return 0;
   }
+#+END_SRC
+
+****** supported compound types
+
+compound types are stored as pair of name and function that takes list of SExpr and returns LLVMTypeRef
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMTypeRef compile_ptr(SExpr* list);
+  LLVMTypeRef compile_fn(SExpr* list);
+  struct{
+      char *name;
+      LLVMTypeRef (*fn)(SExpr *);
+  } compound_types[]={
+      {"<ptr>",compile_ptr},
+      {"<fn>",compile_fn},
+      {0,0}
+  };
+  LLVMTypeRef compile_compound_type(SExpr* list){
+      for(int i=0;compound_types[i].name;i++)
+          if(atomeq(list[0],compound_types[i].name))
+              return compound_types[i].fn(list);
+      return 0;
+  }
+#+END_SRC
+
+******* pointer type
+
+pointers are defined as list of two elements: first element is name of pointer type, second element is type of pointer
+(<ptr> <type>)
+(<ptr>) stands for (<ptr> <void>)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMTypeRef compile_ptr(SExpr* list){
+        if(list[1].ptr==0)
+            return LLVMPointerType(LLVMVoidType(),0);
+        LLVMTypeRef t=compile_type(list[1]);
+        if(!t)
+            t=LLVMVoidType();
+        return LLVMPointerType(t,0);
+    }
+#+END_SRC
+
+******* function type
+
+functions are defined as list of two or more elements: first element is name of function type, second element is return type of function, rest of elements are types of arguments
+(<fn> <return type> <arg1 type> <arg2 type> ...)
+(<fn>) stands for (<fn> <void>)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMTypeRef compile_fn(SExpr* list){
+        LLVMTypeRef ret=compile_type(list[1]);
+        if(!ret)
+            return LLVMFunctionType(LLVMVoidType(),0,0,0);
+        LLVMTypeRef *args=0;
+        size_t argn;
+        for(argn=0;list[argn+2].ptr;argn++);
+        args=malloc(argn*sizeof(LLVMTypeRef));
+        for(size_t i=0;i<argn;i++)
+            args[i]=compile_type(list[i+2]);
+        LLVMTypeRef fn=LLVMFunctionType(ret,args,argn,0);
+        free(args);
+        return fn;
+    }
+#+END_SRC
+
+***** Values
+
+Values are either numbers, strings, or symbols.
+numbers or compiled to LLVM constants, strings are compiled to LLVM global strings, and are looked up in the environment.
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
   LLVMValueRef compile_value(SExpr sexp){
       if(sexp.type==ATOM){
           if(isdigit(*(char *)sexp.ptr))
@@ -337,79 +359,220 @@ programs, but it is not guaranteed to parse incorrect programs.
       prints(sexp);
       return 0;
   }
+#+END_SRC
 
-  void compile_instr(LLVMBuilderRef builder,SExpr sexp){
-      LLVMModuleRef module=LLVMGetGlobalParent(LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder)));
-      if(sexp.type==LIST){
-          SExpr *list=(SExpr *)sexp.ptr;
-          if(atomeq(list[0],"ret")){
-              LLVMValueRef ret=compile_value(list[1]);
-              LLVMBuildRet(builder,ret);
-          }else if(atomeq(list[0],"br")){
-              // br <label> | br <cond> <label> <label>
-              if(list[1].type==ATOM){
-                  LLVMBuildBr(builder,(LLVMBasicBlockRef)get_var((char *)list[1].ptr));
-              }else{
-                  LLVMValueRef cond=compile_value(list[1]);
-                  LLVMBuildCondBr(builder,cond,(LLVMBasicBlockRef)get_var((char *)list[2].ptr),(LLVMBasicBlockRef)get_var((char *)list[3].ptr));
-              }
-          }else if(atomeq(list[0],"add")){
-              char *name=(char *)list[1].ptr;
-              LLVMValueRef op1=compile_value(list[2]);
-              LLVMValueRef op2=compile_value(list[3]);
-              LLVMValueRef add=LLVMBuildAdd(builder,op1,op2,name);
-              add_var(name,add);
-          }else if(atomeq(list[0],"sub")){
-              char *name=(char *)list[1].ptr;
-              LLVMValueRef op1=compile_value(list[2]);
-              LLVMValueRef op2=compile_value(list[3]);
-              LLVMValueRef sub=LLVMBuildSub(builder,op1,op2,name);
-              add_var(name,sub);
-          }else if(atomeq(list[0],"mul")){
-              char *name=(char *)list[1].ptr;
-              LLVMValueRef op1=compile_value(list[2]);
-              LLVMValueRef op2=compile_value(list[3]);
-              LLVMValueRef mul=LLVMBuildMul(builder,op1,op2,name);
-              add_var(name,mul);
-          }else if(atomeq(list[0],"div")){
-              char *name=(char *)list[1].ptr;
-              LLVMValueRef op1=compile_value(list[2]);
-              LLVMValueRef op2=compile_value(list[3]);
-              LLVMValueRef div=LLVMBuildUDiv(builder,op1,op2,name);
-              add_var(name,div);
-          }else if(atomeq(list[0],"call")){
-              char *name=(char *)list[1].ptr;
-              // third elem is name of function to call
-              char *fname=(char *)list[2].ptr;
-              // rest of list is arguments
-              size_t n_args=0;
-              for(SExpr *i=list+3;i->ptr;i++)
-                  n_args++;
-              LLVMValueRef *args=malloc(n_args*sizeof(LLVMValueRef));
-              for(size_t i=0;i<n_args;i++)
-                  args[i]=compile_value(list[i+2]);
-              LLVMValueRef func=LLVMGetNamedFunction(module,fname);
-              LLVMTypeRef type=LLVMGetReturnType(LLVMGetElementType(LLVMTypeOf(func)));
-              LLVMValueRef call=LLVMBuildCall2(builder,type,func,args,n_args,(char *)list[1].ptr);
-              add_var(name,call);
-              free(args);
-          }else if(atomeq(list[0],"load")){
-              // second elem is name of variable to store result
-              char *rname=(char *)list[1].ptr;
-              // third elem is name of variable to load
-              char *name=(char *)list[2].ptr;
-              LLVMValueRef load=LLVMBuildLoad2(builder, LLVMTypeOf(get_var(name)),get_var(name),name);
-              add_var(rname,load);
-          }else if(atomeq(list[0],"store")){
-              // second elem is name of variable to store
-              char *name=(char *)list[1].ptr;
-              // third elem is value to store
-              LLVMValueRef value=compile_value(list[2]);
-              LLVMBuildStore(builder,value,get_var(name));
-          }
-      }
+***** Instructions
+
+instruction compiler functions are named compile_<instruction>
+implemented as functions that take a pointer to builder and a pointer to the instruction list and return a pointer to the last instruction
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_add(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_sub(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_div(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_call(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_store(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_load(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_phi(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_cast(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_assign(LLVMBuilderRef builder,SExpr* sexp);
+  struct instruction{
+      char *name;
+      LLVMValueRef (*compile)(LLVMBuilderRef,SExpr*);
+  }   instructions[]={
+      {"add",compile_add},
+      {"sub",compile_sub},
+      {"mul",compile_mul},
+      {"div",compile_div},
+      {"call",compile_call},
+      {"store",compile_store},
+      {"load",compile_load},
+      {"phi",compile_phi},
+      {"cast",compile_cast},
+      {"assign",compile_assign},
+      {0,0}
+  };
+  LLVMValueRef compile_instr(LLVMBuilderRef builder,SExpr* sexp){
+      for(size_t i=0;instructions[i].name;i++)
+          if(!strcmp(sexp[0].ptr,instructions[i].name))
+              return instructions[i].compile(builder,sexp);
+      return 0;
   }
+#+END_SRC
 
+****** Return
+
+syntax: (ret value) or (ret) for void
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_ret(LLVMBuilderRef *builder,SExpr *sexp){
+      if(sexp[1].ptr==0)
+          return LLVMBuildRetVoid(*builder);
+      else
+          return LLVMBuildRet(*builder,compile_value(sexp[1]));
+  }
+#+END_SRC
+
+****** Branch
+
+syntax: (br cond label1 label2) or (br label) for unconditional branch
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes compiler.c :comments both :exports both
+  LLVMValueRef compile_br(LLVMBuilderRef builder,SExpr* sexp){
+      if(sexp[3].ptr)
+          return LLVMBuildCondBr(builder,compile_value(sexp[1]),
+                                 (LLVMBasicBlockRef)compile_value(sexp[2]),
+                                 (LLVMBasicBlockRef)compile_value(sexp[3]));
+      else
+          return LLVMBuildBr(builder,(LLVMBasicBlockRef)compile_value(sexp[1]));
+  }
+#+END_SRC
+
+****** Add
+
+syntax: (add value1 value2)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_add(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildAdd(builder,compile_value(sexp[2]),
+                                 compile_value(sexp[3]),
+                                 (char *)sexp[0].ptr);
+  }
+#+END_SRC
+
+****** Sub
+
+syntax: (sub value1 value2)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_sub(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildSub(builder,compile_value(sexp[1]),
+                                 compile_value(sexp[2]),
+                                 (char *)sexp[0].ptr);
+  }
+#+END_SRC
+
+****** Mul
+
+syntax: (mul value1 value2)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildMul(builder,compile_value(sexp[1]),
+                                 compile_value(sexp[2]),
+                                 (char *)sexp[0].ptr);
+  }
+#+END_SRC
+
+****** Div
+
+syntax: (div value1 value2)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_sdiv(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildSDiv(builder,compile_value(sexp[1]),
+                                 compile_value(sexp[2]),
+                                 (char *)sexp[0].ptr);
+  }
+#+END_SRC
+
+****** Call
+
+syntax: (call fn arg1 arg2 ...)
+fn is a function name or a function pointer
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_call(LLVMBuilderRef builder,SExpr* sexp){
+      LLVMValueRef fn=compile_value(sexp[1]);
+      LLVMValueRef *args=0;
+      size_t argn;
+      for(argn=0;sexp[argn+2].ptr;argn++);
+      args=malloc(argn*sizeof(LLVMValueRef));
+      for(size_t i=0;i<argn;i++)
+          args[i]=compile_value(sexp[i+2]);
+      // using LLVMBuildCall2 to avoid warning
+      LLVMValueRef call=LLVMBuildCall2(builder,LLVMGetElementType(LLVMTypeOf(fn)),fn,args,argn,"call");
+      free(args);
+      return call;
+  }
+#+END_SRC
+
+****** Store
+
+syntax: (store value ptr)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_store(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildStore(builder,compile_value(sexp[1]),compile_value(sexp[2]));
+  }
+#+END_SRC
+
+****** Load
+
+syntax: (load ptr)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_load(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildLoad2(builder,LLVMGetElementType(LLVMTypeOf(compile_value(sexp[1]))),compile_value(sexp[1]),"load");
+  }
+#+END_SRC
+
+****** Phi
+
+syntax: (phi type (value1 label1) (value2 label2) ...)
+type is the type of the phi node
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_phi(LLVMBuilderRef builder,SExpr* sexp){
+      LLVMTypeRef type=compile_type(sexp[1]);
+      LLVMValueRef phi=LLVMBuildPhi(builder,type,"phi");
+      size_t argn;
+      for(argn=0;sexp[argn+2].ptr;argn++);
+      LLVMValueRef *values=malloc(argn*sizeof(LLVMValueRef));
+      LLVMBasicBlockRef *labels=malloc(argn*sizeof(LLVMBasicBlockRef));
+      for(size_t i=0;i<argn;i++){
+          values[i]=compile_value(((SExpr *)(sexp[i+2].ptr))[0]);
+          labels[i]=(LLVMBasicBlockRef)compile_value(((SExpr *)(sexp[i+2].ptr))[1]);
+      }
+      LLVMAddIncoming(phi,values,labels,argn);
+      free(values);
+      free(labels);
+      return phi;
+  }
+#+END_SRC
+
+****** Cast
+
+syntax: (cast type value)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_cast(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildBitCast(builder,compile_value(sexp[2]),compile_type(sexp[1]),"cast");
+  }
+#+END_SRC
+
+****** Define
+
+syntax: (def name value) or (def name (instruction ...))
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+  LLVMValueRef compile_assign(LLVMBuilderRef builder,SExpr* sexp){
+      LLVMValueRef value;
+      if(sexp[2].type==ATOM)
+          value=compile_value(sexp[2]);
+      else
+          value=compile_instr(builder,(SExpr *)(sexp[2].ptr));
+      add_var((char *)sexp[1].ptr,value);
+      return value;
+  }
+#+END_SRC
+
+***** Blocks
+
+Syntax: (block name (instruction ...) ...)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes compiler.c :comments both :exports both
   void compile_block(LLVMValueRef function,SExpr sexp){
       if(sexp.type==LIST){
           SExpr *list=(SExpr *)sexp.ptr;
@@ -418,12 +581,18 @@ programs, but it is not guaranteed to parse incorrect programs.
               LLVMBasicBlockRef block=LLVMAppendBasicBlock(function,(char *)list[1].ptr);
               LLVMPositionBuilderAtEnd(builder,block);
               for(SExpr *i=list+2;i->ptr;i++)
-                  compile_instr(builder,*i);
-
+                  compile_instr(builder,(SExpr *)i->ptr);
           }
       }
   }
+#+END_SRC
 
+***** Globals
+
+Only functions are implemented for now.
+function syntax: (function ((name <return type>) (arg1 <type>) (arg2 <type>) ...) (block ...) ...)
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
   void compile_global(LLVMModuleRef module,SExpr sexp){
       if(sexp.type==LIST){
           SExpr *list=(SExpr *)sexp.ptr;
@@ -457,7 +626,14 @@ programs, but it is not guaranteed to parse incorrect programs.
           }
       }
   }
+#+END_SRC
 
+***** Module
+
+syntax: (module name global ...)
+where global is a function or a global variable declarations
+
+#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes compiler.c :comments both :exports both
   LLVMModuleRef compile_module(SExpr sexp){
       if(sexp.type==LIST){
           SExpr *list=(SExpr *)sexp.ptr;
@@ -474,8 +650,11 @@ programs, but it is not guaranteed to parse incorrect programs.
 
 **** CLI
 
-#+BEGIN_SRC C :tangle cli.c :comments both :exports both
+Command line interface only supports dumping the LLVM IR.
+
+#+BEGIN_SRC C :tangle src/cli.c :mkdirp yes :comments both :exports both
   #include "compiler.c"
+  #include "parser.c"
 
   int cli(int argc,char **argv){
       char *infile=0;
@@ -571,13 +750,12 @@ programs, but it is not guaranteed to parse incorrect programs.
 
 **** main
 
-#+BEGIN_SRC C :tangle main.c :comments both
+#+BEGIN_SRC C :tangle src/main.c :mkdirp yes :comments both :exports both
   #include "cli.c"
   int main(int argc,char **argv){
       return cli(argc,argv);
   }
 #+END_SRC
-
 
 **** Build
 
@@ -585,6 +763,7 @@ programs, but it is not guaranteed to parse incorrect programs.
 
 #+BEGIN_SRC sh :tangle CMakeLists.txt :comments both :exports both
   cmake_minimum_required(VERSION 3.4.3)
+  
   project(slang)
 
   find_package(LLVM REQUIRED)
@@ -592,7 +771,7 @@ programs, but it is not guaranteed to parse incorrect programs.
   include_directories(${LLVM_INCLUDE_DIRS})
   add_definitions(${LLVM_DEFINITIONS})
 
-  add_executable(slang main.c)
+  add_executable(slang src/main.c)
 
   llvm_map_components_to_libnames(llvm_libs support core irreader executionengine interpreter mc nativecodegen)
 
@@ -601,24 +780,7 @@ programs, but it is not guaranteed to parse incorrect programs.
 
 ***** build.sh
 
-#+BEGIN_SRC sh :tangle build.sh :comments both :exports both :shebang #!/bin/sh
-  mkdir -p build
-  cd build
+#+BEGIN_SRC sh :tangle build/build.sh :mkdirp yes :comments both :exports both :shebang #!/bin/sh
   cmake ..
   make
 #+END_SRC
-
-** TODO l2lisp
-
-l2lisp stands for low level lisp. It is a static typed low level dialect of
-Lisp. It is designed to be easily transformed to SEIR. Something like C of
-lisps.
-
-** TODO Scheme
-
-Scheme is existing lisp dialect. The goal is to be able to transform it to
-SEIR.
-
-
-
-
