@@ -1,4 +1,7 @@
 /* main */
+/* :PROPERTIES: */
+/* :HEADER-ARGS: :tangle src/main.c  :comments both :exports both :mkdirp yes */
+/* :END: */
 
 
 /* [[file:../README.org::*main][main:1]] */

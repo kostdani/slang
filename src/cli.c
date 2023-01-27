@@ -1,4 +1,7 @@
 /* CLI */
+/* :PROPERTIES: */
+/* :HEADER-ARGS: :tangle src/cli.c :comments both :exports both :mkdirp yes */
+/* :END: */
 
 /* Command line interface only supports dumping the LLVM IR. */
 

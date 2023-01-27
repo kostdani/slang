@@ -1,4 +1,7 @@
 /* Environment */
+/* :PROPERTIES: */
+/* :HEADER-ARGS: :tangle src/env.h :comments both :exports both :mkdirp yes */
+/* :END: */
 
 /* Environment is implemented as a linked list of name and value pairs. It is */
 /* possible to define new variables and functions in the environment. It is also */

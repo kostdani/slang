@@ -6,15 +6,20 @@
 #+HOMEPAGE: https://github.com/kostdani/slang
 #+KEYWORDS: llvm, s-expression, compiler, scheme, lisp, c
 #+LANGUAGE: en
+#+LICENSE: MIT
+
+#+SETUPFILE: https://fniessen.github.io/org-html-themes/org/theme-readtheorg.setup
+
+#+PROPERTY: header-args :mkdirp yes
+#+PROPERTY: header-args :comments both
+#+PROPERTY: header-args :exports both
 
 * Introduction
 
 Slang is a compiler frontend for S-Expression languages targeting LLVM IR. It
 is written in C and uses LLVM C API. It is designed to be used as a CLI tool.
 
-* Languages
-
-** SEIR
+* SEIR
 
 SEIR stands for S-Expression Intermediate Representation. It is designed
 to have s-expression syntax and as close to LLVM IR semantics as possible.
@@ -22,15 +27,17 @@ It is not intended to be used directly, but rather as a target language for
 other S-Expression languages which they can be transformed to using macros.
 Something liek assembly of lisps.
 
-*** Src
-
-**** AST
+** Src
+*** AST
+:PROPERTIES:
+:HEADER-ARGS: :tangle src/ast.h  :comments both :exports both :mkdirp yes
+:END:
 
 Abstract syntax tree is maximally simplified. There are 2 types of nodes:
 - LIST - list of nodes
 - ATOM - atom node (leaf) storing a string
-
-#+BEGIN_SRC C :tangle src/ast.h :mkdirp yes :comments both :exports both
+  
+#+BEGIN_SRC C
   #pragma once
   #include <stdio.h>
   #include <string.h>
@@ -55,11 +62,11 @@ Abstract syntax tree is maximally simplified. There are 2 types of nodes:
   #define atomeq(atom, str) (atom.type==ATOM && !strcmp(str,(char *)atom.ptr))
 #+END_SRC
 
-***** Printing
+**** Printing
 
 Printing function is simple and prints the AST in a human readable form.
 
-#+BEGIN_SRC C :tangle src/ast.h :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C 
   void print_sexpr(SExpr sexp){
       if(sexp.type==ATOM)
           printf("%s",(char *)sexp.ptr);
@@ -79,14 +86,17 @@ Printing function is simple and prints the AST in a human readable form.
   }
 #+END_SRC
 
-**** Parser
+*** Parser
+:PROPERTIES:
+:HEADER-ARGS: :tangle src/parser.c :comments both :exports both :mkdirp yes
+:END:
 
 Parser is implemented using recursive descent parser. It is as simple as
 possible and does not support any error recovery. It should be able to parse correct
 programs, but it is not guaranteed to parse incorrect programs.
 
 Context free grammar used to implement parser:
-#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   #include <wctype.h>
   #include "ast.h"
 
@@ -107,7 +117,7 @@ Context free grammar used to implement parser:
   #define LISP(str) parse(#str)
 #+END_SRC
   - Expression = Atom | List
-#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   SExpr parse_expr(char ** str){
       for(;iswspace(**str);(*str)++);
       if(**str=='(')
@@ -119,7 +129,7 @@ Context free grammar used to implement parser:
   - Atom = string | symbol
     - string = '"' {any character except '"' } | '\\' {any character} '"'
     - symbol = {any character except '(', ')', ' ', '\t', '\n', '\r'}
-#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   SExpr parse_atom(char ** str){
       size_t i;
       SExpr atom;
@@ -146,7 +156,7 @@ Context free grammar used to implement parser:
   }
 #+END_SRC
   List = "(" Expression* ")"
-#+BEGIN_SRC C :tangle src/parser.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   SExpr parse_list(char **str){
       (*str)++;
       SExpr list;
@@ -174,13 +184,16 @@ Context free grammar used to implement parser:
   }
 #+END_SRC
 
-**** Environment
+*** Environment
+:PROPERTIES:
+:HEADER-ARGS: :tangle src/env.h :comments both :exports both :mkdirp yes
+:END:
 
 Environment is implemented as a linked list of name and value pairs. It is
 possible to define new variables and functions in the environment. It is also
 possible to lookup variables and functions in the environment.
 
-#+BEGIN_SRC C :tangle src/env.h :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   #pragma once
   #include <llvm-c/Core.h>
   #include <malloc.h>
@@ -215,13 +228,16 @@ possible to lookup variables and functions in the environment.
   }
 #+END_SRC
 
-**** Compiler
+*** Compiler
+:PROPERTIES:
+:HEADER-ARGS: :tangle src/compiler.c :comments both :exports both :mkdirp yes
+:END:
 
 Compiler is implemented using LLVM C API. It is not very efficient, but it is
 easy to use and understand. The goal is to bootstrap the compiler, better compiler
 will be implemented later in compiled language itself.
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   #include <llvm-c/Core.h>
   #include <llvm-c/ExecutionEngine.h>
   #include <llvm-c/Target.h>
@@ -234,12 +250,12 @@ will be implemented later in compiled language itself.
   #include "env.h"
 #+END_SRC
 
-***** Types
+**** Types
 
 compile type takes SExpr and returns LLVMTypeRef
 if SExpr is atom calls compile_atomic_type if SExpr is list calls compile_compound_type
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMTypeRef compile_atomic_type(SExpr type);
   LLVMTypeRef compile_compound_type(SExpr* type);
   LLVMTypeRef compile_type(SExpr sexp){
@@ -251,11 +267,11 @@ if SExpr is atom calls compile_atomic_type if SExpr is list calls compile_compou
   }
 #+END_SRC
 
-****** supprted atomic types
+***** supprted atomic types
 
 atomic type is stored as pair of name and LLVMTypeRef
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   struct{
       char *name;
        LLVMTypeRef (*fn)();
@@ -277,11 +293,11 @@ atomic type is stored as pair of name and LLVMTypeRef
   }
 #+END_SRC
 
-****** supported compound types
+***** supported compound types
 
 compound types are stored as pair of name and function that takes list of SExpr and returns LLVMTypeRef
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMTypeRef compile_ptr(SExpr* list);
   LLVMTypeRef compile_fn(SExpr* list);
   struct{
@@ -300,13 +316,13 @@ compound types are stored as pair of name and function that takes list of SExpr 
   }
 #+END_SRC
 
-******* pointer type
+****** pointer type
 
 pointers are defined as list of two elements: first element is name of pointer type, second element is type of pointer
 (<ptr> <type>)
 (<ptr>) stands for (<ptr> <void>)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMTypeRef compile_ptr(SExpr* list){
         if(list[1].ptr==0)
             return LLVMPointerType(LLVMVoidType(),0);
@@ -317,13 +333,13 @@ pointers are defined as list of two elements: first element is name of pointer t
     }
 #+END_SRC
 
-******* function type
+****** function type
 
 functions are defined as list of two or more elements: first element is name of function type, second element is return type of function, rest of elements are types of arguments
 (<fn> <return type> <arg1 type> <arg2 type> ...)
 (<fn>) stands for (<fn> <void>)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMTypeRef compile_fn(SExpr* list){
         LLVMTypeRef ret=compile_type(list[1]);
         if(!ret)
@@ -340,12 +356,12 @@ functions are defined as list of two or more elements: first element is name of 
     }
 #+END_SRC
 
-***** Values
+**** Values
 
 Values are either numbers, strings, or symbols.
 numbers or compiled to LLVM constants, strings are compiled to LLVM global strings, and are looked up in the environment.
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMValueRef compile_value(SExpr sexp){
       if(sexp.type==ATOM){
           if(isdigit(*(char *)sexp.ptr))
@@ -361,16 +377,19 @@ numbers or compiled to LLVM constants, strings are compiled to LLVM global strin
   }
 #+END_SRC
 
-***** Instructions
+**** Instructions
 
 instruction compiler functions are named compile_<instruction>
 implemented as functions that take a pointer to builder and a pointer to the instruction list and return a pointer to the last instruction
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
+  LLVMValueRef compile_ret(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_br(LLVMBuilderRef builder,SExpr* sexp);
   LLVMValueRef compile_add(LLVMBuilderRef builder,SExpr* sexp);
   LLVMValueRef compile_sub(LLVMBuilderRef builder,SExpr* sexp);
   LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp);
-  LLVMValueRef compile_div(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_sdiv(LLVMBuilderRef builder,SExpr* sexp);
+  LLVMValueRef compile_udiv(LLVMBuilderRef builder,SExpr* sexp);
   LLVMValueRef compile_call(LLVMBuilderRef builder,SExpr* sexp);
   LLVMValueRef compile_store(LLVMBuilderRef builder,SExpr* sexp);
   LLVMValueRef compile_load(LLVMBuilderRef builder,SExpr* sexp);
@@ -381,10 +400,13 @@ implemented as functions that take a pointer to builder and a pointer to the ins
       char *name;
       LLVMValueRef (*compile)(LLVMBuilderRef,SExpr*);
   }   instructions[]={
+      {"ret",compile_ret},
+      {"br",compile_br},
       {"add",compile_add},
       {"sub",compile_sub},
       {"mul",compile_mul},
-      {"div",compile_div},
+      {"sdiv",compile_sdiv},
+      {"udiv",compile_udiv},
       {"call",compile_call},
       {"store",compile_store},
       {"load",compile_load},
@@ -401,24 +423,24 @@ implemented as functions that take a pointer to builder and a pointer to the ins
   }
 #+END_SRC
 
-****** Return
+***** Return
 
 syntax: (ret value) or (ret) for void
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
-  LLVMValueRef compile_ret(LLVMBuilderRef *builder,SExpr *sexp){
+#+BEGIN_SRC C 
+  LLVMValueRef compile_ret(LLVMBuilderRef builder,SExpr *sexp){
       if(sexp[1].ptr==0)
-          return LLVMBuildRetVoid(*builder);
+          return LLVMBuildRetVoid(builder);
       else
-          return LLVMBuildRet(*builder,compile_value(sexp[1]));
+          return LLVMBuildRet(builder,compile_value(sexp[1]));
   }
 #+END_SRC
 
-****** Branch
+***** Branch
 
 syntax: (br cond label1 label2) or (br label) for unconditional branch
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes compiler.c :comments both :exports both
+#+BEGIN_SRC C 
   LLVMValueRef compile_br(LLVMBuilderRef builder,SExpr* sexp){
       if(sexp[3].ptr)
           return LLVMBuildCondBr(builder,compile_value(sexp[1]),
@@ -429,11 +451,11 @@ syntax: (br cond label1 label2) or (br label) for unconditional branch
   }
 #+END_SRC
 
-****** Add
+***** Add
 
 syntax: (add value1 value2)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C 
   LLVMValueRef compile_add(LLVMBuilderRef builder,SExpr* sexp){
       return LLVMBuildAdd(builder,compile_value(sexp[2]),
                                  compile_value(sexp[3]),
@@ -441,11 +463,11 @@ syntax: (add value1 value2)
   }
 #+END_SRC
 
-****** Sub
+***** Sub
 
 syntax: (sub value1 value2)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C 
   LLVMValueRef compile_sub(LLVMBuilderRef builder,SExpr* sexp){
       return LLVMBuildSub(builder,compile_value(sexp[1]),
                                  compile_value(sexp[2]),
@@ -453,11 +475,11 @@ syntax: (sub value1 value2)
   }
 #+END_SRC
 
-****** Mul
+***** Mul
 
 syntax: (mul value1 value2)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp){
       return LLVMBuildMul(builder,compile_value(sexp[1]),
                                  compile_value(sexp[2]),
@@ -465,11 +487,11 @@ syntax: (mul value1 value2)
   }
 #+END_SRC
 
-****** Div
+***** Signed Div
 
-syntax: (div value1 value2)
+syntax: (sdiv value1 value2)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C 
   LLVMValueRef compile_sdiv(LLVMBuilderRef builder,SExpr* sexp){
       return LLVMBuildSDiv(builder,compile_value(sexp[1]),
                                  compile_value(sexp[2]),
@@ -477,12 +499,24 @@ syntax: (div value1 value2)
   }
 #+END_SRC
 
-****** Call
+***** Unsigned Div
+
+syntax: (udiv value1 value2)
+
+#+BEGIN_SRC C 
+  LLVMValueRef compile_udiv(LLVMBuilderRef builder,SExpr* sexp){
+      return LLVMBuildUDiv(builder,compile_value(sexp[1]),
+                                 compile_value(sexp[2]),
+                                 (char *)sexp[0].ptr);
+  }
+#+END_SRC
+
+***** Call
 
 syntax: (call fn arg1 arg2 ...)
 fn is a function name or a function pointer
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMValueRef compile_call(LLVMBuilderRef builder,SExpr* sexp){
       LLVMValueRef fn=compile_value(sexp[1]);
       LLVMValueRef *args=0;
@@ -498,32 +532,32 @@ fn is a function name or a function pointer
   }
 #+END_SRC
 
-****** Store
+***** Store
 
 syntax: (store value ptr)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C 
   LLVMValueRef compile_store(LLVMBuilderRef builder,SExpr* sexp){
       return LLVMBuildStore(builder,compile_value(sexp[1]),compile_value(sexp[2]));
   }
 #+END_SRC
 
-****** Load
+***** Load
 
 syntax: (load ptr)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMValueRef compile_load(LLVMBuilderRef builder,SExpr* sexp){
       return LLVMBuildLoad2(builder,LLVMGetElementType(LLVMTypeOf(compile_value(sexp[1]))),compile_value(sexp[1]),"load");
   }
 #+END_SRC
 
-****** Phi
+***** Phi
 
 syntax: (phi type (value1 label1) (value2 label2) ...)
 type is the type of the phi node
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMValueRef compile_phi(LLVMBuilderRef builder,SExpr* sexp){
       LLVMTypeRef type=compile_type(sexp[1]);
       LLVMValueRef phi=LLVMBuildPhi(builder,type,"phi");
@@ -542,21 +576,21 @@ type is the type of the phi node
   }
 #+END_SRC
 
-****** Cast
+***** Cast
 
 syntax: (cast type value)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C 
   LLVMValueRef compile_cast(LLVMBuilderRef builder,SExpr* sexp){
       return LLVMBuildBitCast(builder,compile_value(sexp[2]),compile_type(sexp[1]),"cast");
   }
 #+END_SRC
 
-****** Define
+***** Define
 
 syntax: (def name value) or (def name (instruction ...))
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   LLVMValueRef compile_assign(LLVMBuilderRef builder,SExpr* sexp){
       LLVMValueRef value;
       if(sexp[2].type==ATOM)
@@ -568,11 +602,11 @@ syntax: (def name value) or (def name (instruction ...))
   }
 #+END_SRC
 
-***** Blocks
+**** Blocks
 
 Syntax: (block name (instruction ...) ...)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes compiler.c :comments both :exports both
+#+BEGIN_SRC C 
   void compile_block(LLVMValueRef function,SExpr sexp){
       if(sexp.type==LIST){
           SExpr *list=(SExpr *)sexp.ptr;
@@ -587,12 +621,12 @@ Syntax: (block name (instruction ...) ...)
   }
 #+END_SRC
 
-***** Globals
+**** Globals
 
 Only functions are implemented for now.
 function syntax: (function ((name <return type>) (arg1 <type>) (arg2 <type>) ...) (block ...) ...)
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C 
   void compile_global(LLVMModuleRef module,SExpr sexp){
       if(sexp.type==LIST){
           SExpr *list=(SExpr *)sexp.ptr;
@@ -628,12 +662,12 @@ function syntax: (function ((name <return type>) (arg1 <type>) (arg2 <type>) ...
   }
 #+END_SRC
 
-***** Module
+**** Module
 
 syntax: (module name global ...)
 where global is a function or a global variable declarations
 
-#+BEGIN_SRC C :tangle src/compiler.c :mkdirp yes compiler.c :comments both :exports both
+#+BEGIN_SRC C
   LLVMModuleRef compile_module(SExpr sexp){
       if(sexp.type==LIST){
           SExpr *list=(SExpr *)sexp.ptr;
@@ -648,11 +682,14 @@ where global is a function or a global variable declarations
   }
 #+END_SRC
 
-**** CLI
+*** CLI
+:PROPERTIES:
+:HEADER-ARGS: :tangle src/cli.c :comments both :exports both :mkdirp yes
+:END:
 
 Command line interface only supports dumping the LLVM IR.
 
-#+BEGIN_SRC C :tangle src/cli.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   #include "compiler.c"
   #include "parser.c"
 
@@ -748,18 +785,21 @@ Command line interface only supports dumping the LLVM IR.
   }
 #+END_SRC
 
-**** main
+*** main
+:PROPERTIES:
+:HEADER-ARGS: :tangle src/main.c  :comments both :exports both :mkdirp yes
+:END:
 
-#+BEGIN_SRC C :tangle src/main.c :mkdirp yes :comments both :exports both
+#+BEGIN_SRC C
   #include "cli.c"
   int main(int argc,char **argv){
       return cli(argc,argv);
   }
 #+END_SRC
 
-**** Build
+** Build
 
-***** CMakeLists.txt
+*** CMakeLists.txt
 
 #+BEGIN_SRC sh :tangle CMakeLists.txt :comments both :exports both
   cmake_minimum_required(VERSION 3.4.3)
@@ -778,9 +818,53 @@ Command line interface only supports dumping the LLVM IR.
   target_link_libraries(slang ${llvm_libs})
 #+END_SRC
 
-***** build.sh
+*** build.sh
 
 #+BEGIN_SRC sh :tangle build/build.sh :mkdirp yes :comments both :exports both :shebang #!/bin/sh
   cmake ..
   make
+#+END_SRC
+
+** Tests
+
+some simple .seir files
+
+#+BEGIN_SRC lisp :tangle tests/1.seir
+  (module test
+    (function ((main <i32>))
+        (block entry
+            (ret 0))))
+#+END_SRC
+
+#+BEGIN_SRC lisp :tangle tests/2.seir
+  (module test
+    (function ((main <i32>) (argc <i32>) (argv (<ptr> (<ptr> <i8>)))))
+        (block entry
+            (ret argc)))
+#+END_SRC
+
+* License
+
+#+BEGIN_SRC md :tangle LICENSE
+MIT License
+
+Copyright (c) 2023 kostdani
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 #+END_SRC

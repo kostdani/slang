@@ -1,4 +1,7 @@
 /* Compiler */
+/* :PROPERTIES: */
+/* :HEADER-ARGS: :tangle src/compiler.c :comments both :exports both :mkdirp yes */
+/* :END: */
 
 /* Compiler is implemented using LLVM C API. It is not very efficient, but it is */
 /* easy to use and understand. The goal is to bootstrap the compiler, better compiler */
@@ -158,10 +161,13 @@ LLVMValueRef compile_value(SExpr sexp){
 
 
 /* [[file:../README.org::*Instructions][Instructions:1]] */
+LLVMValueRef compile_ret(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_br(LLVMBuilderRef builder,SExpr* sexp);
 LLVMValueRef compile_add(LLVMBuilderRef builder,SExpr* sexp);
 LLVMValueRef compile_sub(LLVMBuilderRef builder,SExpr* sexp);
 LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp);
-LLVMValueRef compile_div(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_sdiv(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_udiv(LLVMBuilderRef builder,SExpr* sexp);
 LLVMValueRef compile_call(LLVMBuilderRef builder,SExpr* sexp);
 LLVMValueRef compile_store(LLVMBuilderRef builder,SExpr* sexp);
 LLVMValueRef compile_load(LLVMBuilderRef builder,SExpr* sexp);
@@ -172,10 +178,13 @@ struct instruction{
     char *name;
     LLVMValueRef (*compile)(LLVMBuilderRef,SExpr*);
 }   instructions[]={
+    {"ret",compile_ret},
+    {"br",compile_br},
     {"add",compile_add},
     {"sub",compile_sub},
     {"mul",compile_mul},
-    {"div",compile_div},
+    {"sdiv",compile_sdiv},
+    {"udiv",compile_udiv},
     {"call",compile_call},
     {"store",compile_store},
     {"load",compile_load},
@@ -198,11 +207,11 @@ LLVMValueRef compile_instr(LLVMBuilderRef builder,SExpr* sexp){
 
 
 /* [[file:../README.org::*Return][Return:1]] */
-LLVMValueRef compile_ret(LLVMBuilderRef *builder,SExpr *sexp){
+LLVMValueRef compile_ret(LLVMBuilderRef builder,SExpr *sexp){
     if(sexp[1].ptr==0)
-        return LLVMBuildRetVoid(*builder);
+        return LLVMBuildRetVoid(builder);
     else
-        return LLVMBuildRet(*builder,compile_value(sexp[1]));
+        return LLVMBuildRet(builder,compile_value(sexp[1]));
 }
 /* Return:1 ends here */
 
@@ -261,18 +270,31 @@ LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp){
 }
 /* Mul:1 ends here */
 
-/* Div */
+/* Signed Div */
 
-/* syntax: (div value1 value2) */
+/* syntax: (sdiv value1 value2) */
 
 
-/* [[file:../README.org::*Div][Div:1]] */
+/* [[file:../README.org::*Signed Div][Signed Div:1]] */
 LLVMValueRef compile_sdiv(LLVMBuilderRef builder,SExpr* sexp){
     return LLVMBuildSDiv(builder,compile_value(sexp[1]),
                                compile_value(sexp[2]),
                                (char *)sexp[0].ptr);
 }
-/* Div:1 ends here */
+/* Signed Div:1 ends here */
+
+/* Unsigned Div */
+
+/* syntax: (udiv value1 value2) */
+
+
+/* [[file:../README.org::*Unsigned Div][Unsigned Div:1]] */
+LLVMValueRef compile_udiv(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildUDiv(builder,compile_value(sexp[1]),
+                               compile_value(sexp[2]),
+                               (char *)sexp[0].ptr);
+}
+/* Unsigned Div:1 ends here */
 
 /* Call */
 

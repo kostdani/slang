@@ -1,4 +1,7 @@
 /* Parser */
+/* :PROPERTIES: */
+/* :HEADER-ARGS: :tangle src/parser.c :comments both :exports both :mkdirp yes */
+/* :END: */
 
 /* Parser is implemented using recursive descent parser. It is as simple as */
 /* possible and does not support any error recovery. It should be able to parse correct */

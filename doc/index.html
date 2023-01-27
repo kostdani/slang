@@ -1,0 +1,1134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<!-- 2023-01-26 Thu 23:02 -->
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>slang - S-Expression languages frontend</title>
+<meta name="author" content="kostdani" />
+<meta name="description" content="Compiler frontend for S-Expression languages tageting LLVM IR" />
+<meta name="keywords" content="llvm, s-expression, compiler, scheme, lisp, c" />
+<meta name="generator" content="Org Mode" />
+<link rel="stylesheet" type="text/css" href="https://fniessen.github.io/org-html-themes/src/readtheorg_theme/css/htmlize.css"/>
+<link rel="stylesheet" type="text/css" href="https://fniessen.github.io/org-html-themes/src/readtheorg_theme/css/readtheorg.css"/>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.4/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="https://fniessen.github.io/org-html-themes/src/lib/js/jquery.stickytableheaders.min.js"></script>
+<script type="text/javascript" src="https://fniessen.github.io/org-html-themes/src/readtheorg_theme/js/readtheorg.js"></script>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+        displayAlign: "center",
+        displayIndent: "0em",
+
+        "HTML-CSS": { scale: 100,
+                        linebreaks: { automatic: "false" },
+                        webFont: "TeX"
+                       },
+        SVG: {scale: 100,
+              linebreaks: { automatic: "false" },
+              font: "TeX"},
+        NativeMML: {scale: 100},
+        TeX: { equationNumbers: {autoNumber: "AMS"},
+               MultLineWidth: "85%",
+               TagSide: "right",
+               TagIndent: ".8em"
+             }
+});
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS_HTML"></script>
+</head>
+<body>
+<div id="content" class="content">
+<h1 class="title">slang - S-Expression languages frontend</h1>
+<div id="table-of-contents" role="doc-toc">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents" role="doc-toc">
+<ul>
+<li><a href="#org00c91e6">1. Introduction</a></li>
+<li><a href="#org6c5296c">2. SEIR</a>
+<ul>
+<li><a href="#org29bdddf">2.1. Src</a>
+<ul>
+<li><a href="#org05c9d98">2.1.1. AST</a></li>
+<li><a href="#org2479d15">2.1.2. Parser</a></li>
+<li><a href="#org6e79a4f">2.1.3. Environment</a></li>
+<li><a href="#org9f592f6">2.1.4. Compiler</a></li>
+<li><a href="#org93b2a42">2.1.5. CLI</a></li>
+<li><a href="#orgea4d68d">2.1.6. main</a></li>
+</ul>
+</li>
+<li><a href="#org7b760fa">2.2. Build</a>
+<ul>
+<li><a href="#org4f2f5bf">2.2.1. CMakeLists.txt</a></li>
+<li><a href="#org84e1d9d">2.2.2. build.sh</a></li>
+</ul>
+</li>
+<li><a href="#org226359f">2.3. Tests</a></li>
+</ul>
+</li>
+<li><a href="#orgbbe45a4">3. License</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-org00c91e6" class="outline-2">
+<h2 id="org00c91e6"><span class="section-number-2">1.</span> Introduction</h2>
+<div class="outline-text-2" id="text-1">
+<p>
+Slang is a compiler frontend for S-Expression languages targeting LLVM IR. It
+is written in C and uses LLVM C API. It is designed to be used as a CLI tool.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org6c5296c" class="outline-2">
+<h2 id="org6c5296c"><span class="section-number-2">2.</span> SEIR</h2>
+<div class="outline-text-2" id="text-2">
+<p>
+SEIR stands for S-Expression Intermediate Representation. It is designed
+to have s-expression syntax and as close to LLVM IR semantics as possible.
+It is not intended to be used directly, but rather as a target language for
+other S-Expression languages which they can be transformed to using macros.
+Something liek assembly of lisps.
+</p>
+</div>
+
+<div id="outline-container-org29bdddf" class="outline-3">
+<h3 id="org29bdddf"><span class="section-number-3">2.1.</span> Src</h3>
+<div class="outline-text-3" id="text-2-1">
+</div>
+<div id="outline-container-org05c9d98" class="outline-4">
+<h4 id="org05c9d98"><span class="section-number-4">2.1.1.</span> AST</h4>
+<div class="outline-text-4" id="text-2-1-1">
+<p>
+Abstract syntax tree is maximally simplified. There are 2 types of nodes:
+</p>
+<ul class="org-ul">
+<li>LIST - list of nodes</li>
+<li>ATOM - atom node (leaf) storing a string</li>
+</ul>
+
+<div class="org-src-container">
+<pre class="src src-C">#pragma once
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+#include &lt;malloc.h&gt;
+
+typedef struct s_expr{
+    enum{
+	LIST,
+	ATOM
+    } type;
+    void * ptr;
+} SExpr;
+
+void free_sexpr(SExpr sexp){
+    if(sexp.type==LIST)
+	for (SExpr *i = (SExpr *) sexp.ptr; i-&gt;ptr; i++)
+	    free_sexpr(*i);
+    if(sexp.ptr)
+	free(sexp.ptr);
+}
+
+#define atomeq(atom, str) (atom.type==ATOM &amp;&amp; !strcmp(str,(char *)atom.ptr))
+</pre>
+</div>
+</div>
+
+<ol class="org-ol">
+<li><a id="org1394321"></a>Printing<br />
+<div class="outline-text-5" id="text-2-1-1-1">
+<p>
+Printing function is simple and prints the AST in a human readable form.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">void print_sexpr(SExpr sexp){
+    if(sexp.type==ATOM)
+	printf("%s",(char *)sexp.ptr);
+    else if(sexp.type==LIST) {
+	printf("(");
+	for (SExpr *i = (SExpr *) sexp.ptr; i-&gt;ptr; i++) {
+	    if(i!=sexp.ptr)
+		printf(" ");
+	    print_sexpr(*i);
+	}
+	printf(")");
+    }
+}
+void prints(SExpr sexp){
+    print_sexpr(sexp);
+    printf("\n");
+}
+</pre>
+</div>
+</div>
+</li>
+</ol>
+</div>
+
+<div id="outline-container-org2479d15" class="outline-4">
+<h4 id="org2479d15"><span class="section-number-4">2.1.2.</span> Parser</h4>
+<div class="outline-text-4" id="text-2-1-2">
+<p>
+Parser is implemented using recursive descent parser. It is as simple as
+possible and does not support any error recovery. It should be able to parse correct
+programs, but it is not guaranteed to parse incorrect programs.
+</p>
+
+<p>
+Context free grammar used to implement parser:
+</p>
+<div class="org-src-container">
+<pre class="src src-C">#include &lt;wctype.h&gt;
+#include "ast.h"
+
+SExpr parse_expr(char ** str);
+SExpr parse_list(char ** str);
+SExpr parse_atom(char ** str);
+SExpr parse(char *s){
+    size_t l=strlen(s);
+    char *ostr=(char *)malloc(l+1);
+    char *str=ostr;
+    strcpy(str,s);
+    str[l]=0;
+    SExpr ast= parse_expr(&amp;str);
+    free(ostr);
+    return ast;
+}
+
+#define LISP(str) parse(#str)
+</pre>
+</div>
+<ul class="org-ul">
+<li>Expression = Atom | List</li>
+</ul>
+<div class="org-src-container">
+<pre class="src src-C">SExpr parse_expr(char ** str){
+    for(;iswspace(**str);(*str)++);
+    if(**str=='(')
+	return parse_list(str);
+    else
+	return parse_atom(str);
+}
+</pre>
+</div>
+<ul class="org-ul">
+<li>Atom = string | symbol
+<ul class="org-ul">
+<li>string = '"' {any character except '"' } | '\\' {any character} '"'</li>
+<li>symbol = {any character except '(', ')', ' ', '\t', '\n', '\r'}</li>
+</ul></li>
+</ul>
+<div class="org-src-container">
+<pre class="src src-C">SExpr parse_atom(char ** str){
+    size_t i;
+    SExpr atom;
+    atom.type=ATOM;
+    switch (**str) {
+    case '"':
+	for(i=1;(*str)[i]!='"';i++)
+	    if((*str)[i]=='\\')
+		i++;
+	i++;
+	atom.ptr=malloc(i+1);
+	strncpy((char *)atom.ptr,*str,i);
+	((char *)atom.ptr)[i]=0;
+	(*str)+=i;
+	return atom;
+    default:
+	for (i=0; !iswspace((*str)[i])&amp;&amp;(*str)[i]!=')'&amp;&amp;(*str)[i]!='('; i++);
+	atom.ptr=malloc(i+1);
+	strncpy((char *)atom.ptr,*str,i);
+	((char *)atom.ptr)[i]=0;
+	(*str)+=i;
+	return atom;
+    }
+}
+</pre>
+</div>
+<p>
+List = "(" Expression* ")"
+</p>
+<div class="org-src-container">
+<pre class="src src-C">SExpr parse_list(char **str){
+    (*str)++;
+    SExpr list;
+    list.type=LIST;
+    size_t a_len=0;
+    size_t m_len=1;
+    list.ptr= malloc(m_len*sizeof(SExpr)+1);
+    while(1){
+	for(;iswspace(**str);(*str)++);
+	if(**str==')'){
+	    (*str)++;
+	    SExpr nil;
+	    nil.type=LIST;
+	    nil.ptr=0;
+	    ((SExpr *)list.ptr)[a_len]=nil;
+	    return list;
+	}
+	((SExpr *)list.ptr)[a_len]= parse_expr(str);
+	a_len++;
+	if(a_len==m_len){
+	    m_len*=2;
+	    list.ptr= realloc(list.ptr,m_len*sizeof(SExpr)+1);
+	}
+    }
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org6e79a4f" class="outline-4">
+<h4 id="org6e79a4f"><span class="section-number-4">2.1.3.</span> Environment</h4>
+<div class="outline-text-4" id="text-2-1-3">
+<p>
+Environment is implemented as a linked list of name and value pairs. It is
+possible to define new variables and functions in the environment. It is also
+possible to lookup variables and functions in the environment.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">#pragma once
+#include &lt;llvm-c/Core.h&gt;
+#include &lt;malloc.h&gt;
+#include &lt;string.h&gt;
+
+typedef struct env{
+    char *name;
+    LLVMValueRef value;
+    struct env *next;
+} Env;
+
+Env *global_env=0;
+
+void add_var(char *name,LLVMValueRef value){
+    Env *e=(Env *)malloc(sizeof(Env));
+    e-&gt;name=name;
+    e-&gt;value=value;
+    e-&gt;next=global_env;
+    global_env=e;
+}
+
+LLVMValueRef get_var(char *name){
+    for(Env *e=global_env;e;e=e-&gt;next)
+	if(!strcmp(e-&gt;name,name))
+	    return e-&gt;value;
+    return 0;
+}
+
+void free_env(){
+    for(Env *e=global_env;e;e=e-&gt;next)
+	free(e);
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org9f592f6" class="outline-4">
+<h4 id="org9f592f6"><span class="section-number-4">2.1.4.</span> Compiler</h4>
+<div class="outline-text-4" id="text-2-1-4">
+<p>
+Compiler is implemented using LLVM C API. It is not very efficient, but it is
+easy to use and understand. The goal is to bootstrap the compiler, better compiler
+will be implemented later in compiled language itself.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">#include &lt;llvm-c/Core.h&gt;
+#include &lt;llvm-c/ExecutionEngine.h&gt;
+#include &lt;llvm-c/Target.h&gt;
+#include &lt;llvm-c/Analysis.h&gt;
+#include &lt;llvm-c/BitWriter.h&gt;
+#include &lt;ctype.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include "ast.h"
+#include "env.h"
+</pre>
+</div>
+</div>
+
+<ol class="org-ol">
+<li><a id="org0cdc93d"></a>Types<br />
+<div class="outline-text-5" id="text-2-1-4-1">
+<p>
+compile type takes SExpr and returns LLVMTypeRef
+if SExpr is atom calls compile<sub>atomic</sub><sub>type</sub> if SExpr is list calls compile<sub>compound</sub><sub>type</sub>
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMTypeRef compile_atomic_type(SExpr type);
+LLVMTypeRef compile_compound_type(SExpr* type);
+LLVMTypeRef compile_type(SExpr sexp){
+    if(sexp.type==ATOM)
+	return compile_atomic_type(sexp);
+    else if(sexp.type==LIST)
+	return compile_compound_type((SExpr *)sexp.ptr);
+    return NULL;
+}
+</pre>
+</div>
+</div>
+
+<ol class="org-ol">
+<li><a id="org4ddfb2e"></a>supprted atomic types<br />
+<div class="outline-text-6" id="text-2-1-4-1-1">
+<p>
+atomic type is stored as pair of name and LLVMTypeRef
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">struct{
+    char *name;
+     LLVMTypeRef (*fn)();
+} types[]={
+    {"&lt;i8&gt;",LLVMInt8Type},
+    {"&lt;i16&gt;",LLVMInt16Type},
+    {"&lt;i32&gt;",LLVMInt32Type},
+    {"&lt;i64&gt;",LLVMInt64Type},
+    {"&lt;f32&gt;",LLVMFloatType},
+    {"&lt;f64&gt;",LLVMDoubleType},
+    {"&lt;void&gt;",LLVMVoidType},
+    {0,0}
+};
+LLVMTypeRef compile_atomic_type(SExpr sexp){
+    for(int i=0;types[i].name;i++)
+	if(atomeq(sexp,types[i].name))
+	    return types[i].fn();
+    return 0;
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org9eafea3"></a>supported compound types<br />
+<div class="outline-text-6" id="text-2-1-4-1-2">
+<p>
+compound types are stored as pair of name and function that takes list of SExpr and returns LLVMTypeRef
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMTypeRef compile_ptr(SExpr* list);
+LLVMTypeRef compile_fn(SExpr* list);
+struct{
+    char *name;
+    LLVMTypeRef (*fn)(SExpr *);
+} compound_types[]={
+    {"&lt;ptr&gt;",compile_ptr},
+    {"&lt;fn&gt;",compile_fn},
+    {0,0}
+};
+LLVMTypeRef compile_compound_type(SExpr* list){
+    for(int i=0;compound_types[i].name;i++)
+	if(atomeq(list[0],compound_types[i].name))
+	    return compound_types[i].fn(list);
+    return 0;
+}
+</pre>
+</div>
+</div>
+
+<ol class="org-ol">
+<li><a id="orgf7f5403"></a>pointer type<br />
+<div class="outline-text-7" id="text-2-1-4-1-2-1">
+<p>
+pointers are defined as list of two elements: first element is name of pointer type, second element is type of pointer
+(&lt;ptr&gt; &lt;type&gt;)
+(&lt;ptr&gt;) stands for (&lt;ptr&gt; &lt;void&gt;)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMTypeRef compile_ptr(SExpr* list){
+      if(list[1].ptr==0)
+	  return LLVMPointerType(LLVMVoidType(),0);
+      LLVMTypeRef t=compile_type(list[1]);
+      if(!t)
+	  t=LLVMVoidType();
+      return LLVMPointerType(t,0);
+  }
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org62cabde"></a>function type<br />
+<div class="outline-text-7" id="text-2-1-4-1-2-2">
+<p>
+functions are defined as list of two or more elements: first element is name of function type, second element is return type of function, rest of elements are types of arguments
+(&lt;fn&gt; &lt;return type&gt; &lt;arg1 type&gt; &lt;arg2 type&gt; &#x2026;)
+(&lt;fn&gt;) stands for (&lt;fn&gt; &lt;void&gt;)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMTypeRef compile_fn(SExpr* list){
+      LLVMTypeRef ret=compile_type(list[1]);
+      if(!ret)
+	  return LLVMFunctionType(LLVMVoidType(),0,0,0);
+      LLVMTypeRef *args=0;
+      size_t argn;
+      for(argn=0;list[argn+2].ptr;argn++);
+      args=malloc(argn*sizeof(LLVMTypeRef));
+      for(size_t i=0;i&lt;argn;i++)
+	  args[i]=compile_type(list[i+2]);
+      LLVMTypeRef fn=LLVMFunctionType(ret,args,argn,0);
+      free(args);
+      return fn;
+  }
+</pre>
+</div>
+</div>
+</li>
+</ol>
+</li>
+</ol>
+</li>
+
+<li><a id="org546666d"></a>Values<br />
+<div class="outline-text-5" id="text-2-1-4-2">
+<p>
+Values are either numbers, strings, or symbols.
+numbers or compiled to LLVM constants, strings are compiled to LLVM global strings, and are looked up in the environment.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_value(SExpr sexp){
+    if(sexp.type==ATOM){
+	if(isdigit(*(char *)sexp.ptr))
+	    return LLVMConstInt(LLVMInt32Type(),atoi((char *)sexp.ptr),0);
+	else if(*(char *)sexp.ptr=='"')
+	    return LLVMConstString((char *)sexp.ptr+1,strlen((char *)sexp.ptr)-2,0);
+	else
+	    return get_var((char *)sexp.ptr);
+    }
+    printf("unknown value: \n");
+    prints(sexp);
+    return 0;
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org88f1072"></a>Instructions<br />
+<div class="outline-text-5" id="text-2-1-4-3">
+<p>
+instruction compiler functions are named compile_&lt;instruction&gt;
+implemented as functions that take a pointer to builder and a pointer to the instruction list and return a pointer to the last instruction
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_ret(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_br(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_add(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_sub(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_sdiv(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_udiv(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_call(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_store(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_load(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_phi(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_cast(LLVMBuilderRef builder,SExpr* sexp);
+LLVMValueRef compile_assign(LLVMBuilderRef builder,SExpr* sexp);
+struct instruction{
+    char *name;
+    LLVMValueRef (*compile)(LLVMBuilderRef,SExpr*);
+}   instructions[]={
+    {"ret",compile_ret},
+    {"br",compile_br},
+    {"add",compile_add},
+    {"sub",compile_sub},
+    {"mul",compile_mul},
+    {"sdiv",compile_sdiv},
+    {"udiv",compile_udiv},
+    {"call",compile_call},
+    {"store",compile_store},
+    {"load",compile_load},
+    {"phi",compile_phi},
+    {"cast",compile_cast},
+    {"assign",compile_assign},
+    {0,0}
+};
+LLVMValueRef compile_instr(LLVMBuilderRef builder,SExpr* sexp){
+    for(size_t i=0;instructions[i].name;i++)
+	if(!strcmp(sexp[0].ptr,instructions[i].name))
+	    return instructions[i].compile(builder,sexp);
+    return 0;
+}
+</pre>
+</div>
+</div>
+
+<ol class="org-ol">
+<li><a id="org12e4e6e"></a>Return<br />
+<div class="outline-text-6" id="text-2-1-4-3-1">
+<p>
+syntax: (ret value) or (ret) for void
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_ret(LLVMBuilderRef builder,SExpr *sexp){
+    if(sexp[1].ptr==0)
+	return LLVMBuildRetVoid(builder);
+    else
+	return LLVMBuildRet(builder,compile_value(sexp[1]));
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org0d58043"></a>Branch<br />
+<div class="outline-text-6" id="text-2-1-4-3-2">
+<p>
+syntax: (br cond label1 label2) or (br label) for unconditional branch
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_br(LLVMBuilderRef builder,SExpr* sexp){
+    if(sexp[3].ptr)
+	return LLVMBuildCondBr(builder,compile_value(sexp[1]),
+			       (LLVMBasicBlockRef)compile_value(sexp[2]),
+			       (LLVMBasicBlockRef)compile_value(sexp[3]));
+    else
+	return LLVMBuildBr(builder,(LLVMBasicBlockRef)compile_value(sexp[1]));
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org982d25d"></a>Add<br />
+<div class="outline-text-6" id="text-2-1-4-3-3">
+<p>
+syntax: (add value1 value2)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_add(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildAdd(builder,compile_value(sexp[2]),
+			       compile_value(sexp[3]),
+			       (char *)sexp[0].ptr);
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org5b37c66"></a>Sub<br />
+<div class="outline-text-6" id="text-2-1-4-3-4">
+<p>
+syntax: (sub value1 value2)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_sub(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildSub(builder,compile_value(sexp[1]),
+			       compile_value(sexp[2]),
+			       (char *)sexp[0].ptr);
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org6f05a0e"></a>Mul<br />
+<div class="outline-text-6" id="text-2-1-4-3-5">
+<p>
+syntax: (mul value1 value2)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_mul(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildMul(builder,compile_value(sexp[1]),
+			       compile_value(sexp[2]),
+			       (char *)sexp[0].ptr);
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="orgb31f2d2"></a>Signed Div<br />
+<div class="outline-text-6" id="text-2-1-4-3-6">
+<p>
+syntax: (sdiv value1 value2)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_sdiv(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildSDiv(builder,compile_value(sexp[1]),
+			       compile_value(sexp[2]),
+			       (char *)sexp[0].ptr);
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org33dc81d"></a>Unsigned Div<br />
+<div class="outline-text-6" id="text-2-1-4-3-7">
+<p>
+syntax: (udiv value1 value2)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_udiv(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildUDiv(builder,compile_value(sexp[1]),
+			       compile_value(sexp[2]),
+			       (char *)sexp[0].ptr);
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org2e6ade7"></a>Call<br />
+<div class="outline-text-6" id="text-2-1-4-3-8">
+<p>
+syntax: (call fn arg1 arg2 &#x2026;)
+fn is a function name or a function pointer
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_call(LLVMBuilderRef builder,SExpr* sexp){
+    LLVMValueRef fn=compile_value(sexp[1]);
+    LLVMValueRef *args=0;
+    size_t argn;
+    for(argn=0;sexp[argn+2].ptr;argn++);
+    args=malloc(argn*sizeof(LLVMValueRef));
+    for(size_t i=0;i&lt;argn;i++)
+	args[i]=compile_value(sexp[i+2]);
+    // using LLVMBuildCall2 to avoid warning
+    LLVMValueRef call=LLVMBuildCall2(builder,LLVMGetElementType(LLVMTypeOf(fn)),fn,args,argn,"call");
+    free(args);
+    return call;
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="orgba564c1"></a>Store<br />
+<div class="outline-text-6" id="text-2-1-4-3-9">
+<p>
+syntax: (store value ptr)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_store(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildStore(builder,compile_value(sexp[1]),compile_value(sexp[2]));
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org1c3f803"></a>Load<br />
+<div class="outline-text-6" id="text-2-1-4-3-10">
+<p>
+syntax: (load ptr)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_load(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildLoad2(builder,LLVMGetElementType(LLVMTypeOf(compile_value(sexp[1]))),compile_value(sexp[1]),"load");
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org6f27f22"></a>Phi<br />
+<div class="outline-text-6" id="text-2-1-4-3-11">
+<p>
+syntax: (phi type (value1 label1) (value2 label2) &#x2026;)
+type is the type of the phi node
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_phi(LLVMBuilderRef builder,SExpr* sexp){
+    LLVMTypeRef type=compile_type(sexp[1]);
+    LLVMValueRef phi=LLVMBuildPhi(builder,type,"phi");
+    size_t argn;
+    for(argn=0;sexp[argn+2].ptr;argn++);
+    LLVMValueRef *values=malloc(argn*sizeof(LLVMValueRef));
+    LLVMBasicBlockRef *labels=malloc(argn*sizeof(LLVMBasicBlockRef));
+    for(size_t i=0;i&lt;argn;i++){
+	values[i]=compile_value(((SExpr *)(sexp[i+2].ptr))[0]);
+	labels[i]=(LLVMBasicBlockRef)compile_value(((SExpr *)(sexp[i+2].ptr))[1]);
+    }
+    LLVMAddIncoming(phi,values,labels,argn);
+    free(values);
+    free(labels);
+    return phi;
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="orgb712b1d"></a>Cast<br />
+<div class="outline-text-6" id="text-2-1-4-3-12">
+<p>
+syntax: (cast type value)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_cast(LLVMBuilderRef builder,SExpr* sexp){
+    return LLVMBuildBitCast(builder,compile_value(sexp[2]),compile_type(sexp[1]),"cast");
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org1923cde"></a>Define<br />
+<div class="outline-text-6" id="text-2-1-4-3-13">
+<p>
+syntax: (def name value) or (def name (instruction &#x2026;))
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMValueRef compile_assign(LLVMBuilderRef builder,SExpr* sexp){
+    LLVMValueRef value;
+    if(sexp[2].type==ATOM)
+	value=compile_value(sexp[2]);
+    else
+	value=compile_instr(builder,(SExpr *)(sexp[2].ptr));
+    add_var((char *)sexp[1].ptr,value);
+    return value;
+}
+</pre>
+</div>
+</div>
+</li>
+</ol>
+</li>
+
+<li><a id="org5301c2a"></a>Blocks<br />
+<div class="outline-text-5" id="text-2-1-4-4">
+<p>
+Syntax: (block name (instruction &#x2026;) &#x2026;)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">void compile_block(LLVMValueRef function,SExpr sexp){
+    if(sexp.type==LIST){
+	SExpr *list=(SExpr *)sexp.ptr;
+	if(atomeq(list[0],"block")){
+	    LLVMBuilderRef builder=LLVMCreateBuilder();
+	    LLVMBasicBlockRef block=LLVMAppendBasicBlock(function,(char *)list[1].ptr);
+	    LLVMPositionBuilderAtEnd(builder,block);
+	    for(SExpr *i=list+2;i-&gt;ptr;i++)
+		compile_instr(builder,(SExpr *)i-&gt;ptr);
+	}
+    }
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="org2098600"></a>Globals<br />
+<div class="outline-text-5" id="text-2-1-4-5">
+<p>
+Only functions are implemented for now.
+function syntax: (function ((name &lt;return type&gt;) (arg1 &lt;type&gt;) (arg2 &lt;type&gt;) &#x2026;) (block &#x2026;) &#x2026;)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">void compile_global(LLVMModuleRef module,SExpr sexp){
+    if(sexp.type==LIST){
+	SExpr *list=(SExpr *)sexp.ptr;
+	if(atomeq(list[0],"function")){
+	    SExpr *signatures=(SExpr *)list[1].ptr;
+	    char *name;
+	    LLVMTypeRef rettype;
+	    if(signatures[0].type==LIST) {
+		SExpr *namesig = (SExpr *) signatures[0].ptr;
+		name = (char *) namesig[0].ptr;
+		rettype = compile_type(namesig[1]);
+	    } else{
+		name=(char *)signatures[0].ptr;
+		rettype=LLVMVoidType();
+	    }
+	    size_t n_args=0;
+	    for(SExpr *i=signatures+1;i-&gt;ptr;i++)
+		n_args++;
+	    LLVMTypeRef *argtypes=malloc(n_args*sizeof(LLVMTypeRef));
+	    for(size_t i=0;i&lt;n_args;i++)
+		argtypes[i]=compile_type(((SExpr *)signatures[i+1].ptr)[1]);
+	    LLVMTypeRef functype=LLVMFunctionType(rettype,argtypes,n_args,0);
+	    LLVMValueRef function=LLVMAddFunction(module,name,functype);
+	    for(size_t i=0;i&lt;n_args;i++){
+		LLVMValueRef arg=LLVMGetParam(function,i);
+		LLVMSetValueName(arg,((char *)(((SExpr *)signatures[i+1].ptr)[0].ptr)));
+	    }
+	    for(SExpr *body=list+2;body-&gt;ptr;body++)
+		compile_block(function,*body);
+	    free(argtypes);
+	}
+    }
+}
+</pre>
+</div>
+</div>
+</li>
+
+<li><a id="orgf4da296"></a>Module<br />
+<div class="outline-text-5" id="text-2-1-4-6">
+<p>
+syntax: (module name global &#x2026;)
+where global is a function or a global variable declarations
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">LLVMModuleRef compile_module(SExpr sexp){
+    if(sexp.type==LIST){
+	SExpr *list=(SExpr *)sexp.ptr;
+	if(atomeq(list[0],"module")){
+	    LLVMModuleRef module=LLVMModuleCreateWithName((char *)list[1].ptr);
+	    for(SExpr *i=list+2;i-&gt;ptr;i++)
+		compile_global(module,*i);
+	    return module;
+	}
+    }
+    return 0;
+}
+</pre>
+</div>
+</div>
+</li>
+</ol>
+</div>
+
+<div id="outline-container-org93b2a42" class="outline-4">
+<h4 id="org93b2a42"><span class="section-number-4">2.1.5.</span> CLI</h4>
+<div class="outline-text-4" id="text-2-1-5">
+<p>
+Command line interface only supports dumping the LLVM IR.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-C">#include "compiler.c"
+#include "parser.c"
+
+int cli(int argc,char **argv){
+    char *infile=0;
+    char *outfile=0;
+    int dump=0;
+    for(int i=1;i&lt;argc;i++){
+	if(!strcmp(argv[i],"-o")){
+	    outfile=argv[++i];
+	}else if(!strcmp(argv[i],"-d")){
+	    dump=1;
+	}else{
+	    infile=argv[i];
+	}
+    }
+    if(!infile){
+	printf("usage: %s [args] &lt;file&gt;\n",argv[0]);
+	printf("supported args: \n"
+	       "-o &lt;file&gt; : output file\n"
+	       "-d : dump llvm ir\n");
+	return 1;
+    }
+    // read file
+    FILE *f=fopen(infile,"r");
+    if(!f){
+	printf("could not open file %s\n",infile);
+	return 1;
+    }
+    fseek(f,0,SEEK_END);
+    size_t size=ftell(f);
+    fseek(f,0,SEEK_SET);
+    char *buf=malloc(size+1);
+    fread(buf,1,size,f);
+    buf[size]=0;
+    fclose(f);
+    // parse file
+    SExpr sexp=parse(buf);
+    free(buf);
+    // compile
+    LLVMModuleRef module=compile_module(sexp);
+    free_sexpr(sexp);
+    // dump ir
+    if(dump){
+	LLVMDumpModule(module);
+    }
+    // compile to file
+    if(outfile){
+	char *error=0;
+	LLVMVerifyModule(module,LLVMReturnStatusAction,&amp;error);
+	if(error &amp;&amp; strcmp(error,"")){
+	    printf("error1: %s\n",error);
+	    return 1;
+	}
+	LLVMInitializeNativeTarget();
+	LLVMTargetRef target;
+	char *triple=LLVMGetDefaultTargetTriple();
+	LLVMGetTargetFromTriple(triple,&amp;target,&amp;error);
+	if(error &amp;&amp; strcmp(error,"")){
+	    printf("error2: %s\n",error);
+	    return 1;
+	}
+	char *cpu=LLVMGetHostCPUName();
+	char *features=LLVMGetHostCPUFeatures();
+	LLVMTargetMachineRef machine=LLVMCreateTargetMachine(target,triple,cpu,features,LLVMCodeGenLevelDefault,LLVMRelocDefault,LLVMCodeModelDefault);
+	LLVMTargetDataRef data=LLVMCreateTargetDataLayout(machine);
+	LLVMSetModuleDataLayout(module,data);
+	LLVMDisposeTargetData(data);
+	LLVMDisposeTargetMachine(machine);
+	free(cpu);
+	free(features);
+	free(triple);
+	if(0){
+	    LLVMInitializeNativeTarget();
+	    LLVMInitializeNativeAsmPrinter();
+	    LLVMInitializeNativeAsmParser();
+	    LLVMExecutionEngineRef engine;
+	    if(LLVMCreateJITCompilerForModule(&amp;engine,module,0,&amp;error)){
+		printf("error: %s\n",error);
+		return 1;
+	    }
+	    LLVMRunFunction(engine,LLVMGetNamedFunction(module,"main"),0,0);
+	    LLVMDisposeExecutionEngine(engine);
+	}else{
+	    LLVMTargetMachineEmitToFile(machine,module,outfile,LLVMObjectFile,0);
+	}
+    }
+    // cleanup
+    LLVMDisposeModule(module);
+    free_env();
+    return 0;
+
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgea4d68d" class="outline-4">
+<h4 id="orgea4d68d"><span class="section-number-4">2.1.6.</span> main</h4>
+<div class="outline-text-4" id="text-2-1-6">
+<div class="org-src-container">
+<pre class="src src-C">#include "cli.c"
+int main(int argc,char **argv){
+    return cli(argc,argv);
+}
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org7b760fa" class="outline-3">
+<h3 id="org7b760fa"><span class="section-number-3">2.2.</span> Build</h3>
+<div class="outline-text-3" id="text-2-2">
+</div>
+<div id="outline-container-org4f2f5bf" class="outline-4">
+<h4 id="org4f2f5bf"><span class="section-number-4">2.2.1.</span> CMakeLists.txt</h4>
+<div class="outline-text-4" id="text-2-2-1">
+<div class="org-src-container">
+<pre class="src src-sh">cmake_minimum_required(VERSION 3.4.3)
+
+project(slang)
+
+find_package(LLVM REQUIRED)
+
+include_directories(${LLVM_INCLUDE_DIRS})
+add_definitions(${LLVM_DEFINITIONS})
+
+add_executable(slang src/main.c)
+
+llvm_map_components_to_libnames(llvm_libs support core irreader executionengine interpreter mc nativecodegen)
+
+target_link_libraries(slang ${llvm_libs})
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org84e1d9d" class="outline-4">
+<h4 id="org84e1d9d"><span class="section-number-4">2.2.2.</span> build.sh</h4>
+<div class="outline-text-4" id="text-2-2-2">
+<div class="org-src-container">
+<pre class="src src-sh">cmake ..
+make
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org226359f" class="outline-3">
+<h3 id="org226359f"><span class="section-number-3">2.3.</span> Tests</h3>
+<div class="outline-text-3" id="text-2-3">
+<p>
+some simple .seir files
+</p>
+
+<div class="org-src-container">
+<pre class="src src-lisp">(module test
+  (function ((main &lt;i32&gt;))
+      (block entry
+	  (ret 0))))
+</pre>
+</div>
+
+<div class="org-src-container">
+<pre class="src src-lisp">(module test
+  (function ((main &lt;i32&gt;) (argc &lt;i32&gt;) (argv (&lt;ptr&gt; (&lt;ptr&gt; &lt;i8&gt;)))))
+      (block entry
+	  (ret argc)))
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgbbe45a4" class="outline-2">
+<h2 id="orgbbe45a4"><span class="section-number-2">3.</span> License</h2>
+<div class="outline-text-2" id="text-3">
+<div class="org-src-container">
+<pre class="src src-md">MIT License
+
+Copyright (c) 2023 kostdani
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</pre>
+</div>
+</div>
+</div>
+</div>
+<div id="postamble" class="status">
+<p class="author">Author: kostdani</p>
+<p class="date">Created: 2023-01-26 Thu 23:02</p>
+<p class="validation"><a href="https://validator.w3.org/check?uri=referer">Validate</a></p>
+</div>
+</body>
+</html>

@@ -1,9 +1,12 @@
 /* AST */
+/* :PROPERTIES: */
+/* :HEADER-ARGS: :tangle src/ast.h  :comments both :exports both :mkdirp yes */
+/* :END: */
 
 /* Abstract syntax tree is maximally simplified. There are 2 types of nodes: */
 /* - LIST - list of nodes */
 /* - ATOM - atom node (leaf) storing a string */
-
+  
 
 /* [[file:../README.org::*AST][AST:1]] */
 #pragma once
