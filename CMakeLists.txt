@@ -1,19 +1,38 @@
-# CMakeLists.txt
+cmake_minimum_required(VERSION 3.20.0)
+project(slang LANGUAGES CXX C)
 
+set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
 
-# [[file:README.org::*CMakeLists.txt][CMakeLists.txt:1]]
-cmake_minimum_required(VERSION 3.4.3)
+set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard to conform to")
 
-project(slang)
+find_package(MLIR REQUIRED CONFIG)
 
-find_package(LLVM REQUIRED)
+message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
+message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
+set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
+set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
+set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
+
+list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+
+include(TableGen)
+include(AddLLVM)
+include(AddMLIR)
+include(HandleLLVMOptions)
 
 include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(${MLIR_INCLUDE_DIRS})
+link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_executable(slang src/main.c)
-
-llvm_map_components_to_libnames(llvm_libs support core irreader executionengine interpreter mc nativecodegen)
-
-target_link_libraries(slang ${llvm_libs})
-# CMakeLists.txt:1 ends here
+add_subdirectory(include)
+include_directories(include)
+add_subdirectory(src)
+if(MLIR_ENABLE_BINDINGS_PYTHON)
+  include(MLIRDetectPythonEnv)
+  mlir_configure_python_dev_packages()
+  add_subdirectory(python)
+endif()
+#add_subdirectory(test)
