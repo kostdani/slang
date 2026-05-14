@@ -1,5 +1,7 @@
 ;; guix.scm
 (use-modules
+  (guix)
+  (guix git-download)
   (guix packages)
   (guix gexp)
   (guix download)
@@ -16,19 +18,24 @@
   (gnu packages check)
   (gnu packages libffi)
   (gnu packages pkg-config))
+(define vcs-file?
+  ;; Return true if the given file is under version control.
+  (or (git-predicate (current-source-directory))
+      (const #t)))                                ;not in a Git checkout
 
 (package
   (name "slang")
   (version "0.1.0")
 
-  ;; Replace with your actual source definition.
-  (source #f)
-
+  (source (local-file "." "guile-checkout"
+                      #:recursive? #t
+                      #:select? vcs-file?))
   (build-system cmake-build-system)
 
   (arguments
    (list
     #:build-type "Release"
+    #:tests? #f                  ;; disable tests
 
     #:configure-flags
     #~(list
