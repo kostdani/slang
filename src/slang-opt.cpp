@@ -1,3 +1,4 @@
+// [[file:../slang.org::*src][src:4]]
 //===- slang-opt.cpp ------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -28,3 +29,4 @@ int main(int argc, char **argv) {
   return mlir::asMainReturnCode(
       mlir::MlirOptMain(argc, argv, "Slang optimizer driver\n", registry));
 }
+// src:4 ends here

@@ -1,3 +1,7 @@
+;; Project setup
+
+;; [[file:slang.org::*Project setup][Project setup:1]]
 (channel
   (version 0)
-  (directory ".guix/modules"))  ;look for package modules under .guix/modules/
+  (directory ".guix/modules"))
+;; Project setup:1 ends here

@@ -1,4 +1,4 @@
-;; guix.scm
+;; [[file:slang.org::*Project setup][Project setup:2]]
 (define-module (guile-package)
   #:use-module (guix)
   #:use-module (guix packages)
@@ -11,7 +11,7 @@
 (define-public slang
   (package
    (name "slang")
-   (version "0.1.0")
+   (version "0.0.1")
 
    (source
     (local-file "." "slang-source"
@@ -23,7 +23,6 @@
     (list
      #:build-type "Release"
      #:tests? #f
-     ;; #:generator "Ninja"
      ))
 
    (inputs
@@ -47,3 +46,4 @@ compiler pipelines and language frontends.")
    (license license:expat)))
 
 slang
+;; Project setup:2 ends here

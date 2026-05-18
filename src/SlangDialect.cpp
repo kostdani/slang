@@ -1,3 +1,4 @@
+// [[file:../slang.org::*src][src:2]]
 //===- SlangDialect.cpp - Slang dialect ---------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -95,3 +96,4 @@ void SlangDialect::registerTypes() {
 
       >();
 }
+// src:2 ends here

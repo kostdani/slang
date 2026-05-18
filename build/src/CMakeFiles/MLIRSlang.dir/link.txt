@@ -1,0 +1,2 @@
+/gnu/store/1ykxfl29x7xv1j5bzrpa6cpb1z7vls6k-profile/bin/ar Dqc ../lib/libMLIRSlang.a CMakeFiles/obj.MLIRSlang.dir/SlangDialect.cpp.o
+/gnu/store/1ykxfl29x7xv1j5bzrpa6cpb1z7vls6k-profile/bin/ranlib -D ../lib/libMLIRSlang.a

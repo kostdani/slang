@@ -1,3 +1,4 @@
+// [[file:../slang.org::*include][include:5]]
 //===- SlangCAPI.h - CAPI for slang dialect -------------------*- C -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -30,3 +31,4 @@ MLIR_CAPI_EXPORTED MlirType mlirSlangCustomTypeGet(MlirContext ctx, MlirStringRe
 #endif
 
 #endif // SLANG_C_DIALECTS_H
+// include:5 ends here

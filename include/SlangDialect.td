@@ -1,3 +1,4 @@
+// [[file:../slang.org::*include][include:3]]
 //===- SlangDialect.td - Slang dialect ----      -------*- tablegen -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -97,3 +98,4 @@ def Slang_CustomType : Slang_Type<"Custom", "custom"> {
 }
 
 #endif // SLANG_DIALECT
+// include:3 ends here

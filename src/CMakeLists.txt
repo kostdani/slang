@@ -1,3 +1,6 @@
+# src
+
+# [[file:../slang.org::*src][src:1]]
 add_mlir_dialect_library(
   MLIRSlang
   SlangDialect.cpp
@@ -39,3 +42,4 @@ target_link_libraries(slang-opt PRIVATE ${LIBS})
 add_dependencies(slang-opt MLIRSlangIncGen)
 
 mlir_check_all_link_libraries(slang-opt)
+# src:1 ends here

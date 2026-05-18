@@ -1,3 +1,4 @@
+// [[file:../slang.org::*src][src:3]]
 //===- Dialects.cpp - CAPI for dialects -----------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
@@ -26,3 +27,4 @@ bool mlirTypeIsASlangCustomType(MlirType type) {
 MlirType mlirSlangCustomTypeGet(MlirContext ctx, MlirStringRef value) {
   return wrap(mlir::slang::CustomType::get(unwrap(ctx), unwrap(value)));
 }
+// src:3 ends here

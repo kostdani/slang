@@ -1,3 +1,4 @@
+# [[file:slang.org::*Project setup][Project setup:3]]
 cmake_minimum_required(VERSION 3.20.0)
 project(slang LANGUAGES CXX C)
 
@@ -36,3 +37,4 @@ if(MLIR_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
 endif()
 #add_subdirectory(test)
+# Project setup:3 ends here

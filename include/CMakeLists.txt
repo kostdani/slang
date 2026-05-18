@@ -1,3 +1,4 @@
+# [[file:../slang.org::*include][include:2]]
 set(dialect Slang)
 set(dialect_namespace slang)
 set(LLVM_TARGET_DEFINITIONS ${dialect}Dialect.td)
@@ -58,3 +59,4 @@ add_custom_command(
 )
 
 add_custom_target(copy_generated_td_to_src_include DEPENDS ${generated_files})
+# include:2 ends here

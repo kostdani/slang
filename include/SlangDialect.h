@@ -1,3 +1,4 @@
+// [[file:../slang.org::*include][include:4]]
 //===- SlangDialect.h - Slang dialect -----------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -36,3 +37,4 @@ namespace mlir::slang {
 #include "SlangTypes.h.inc"
 
 #endif // SLANG_SLANGDIALECT_H
+// include:4 ends here
