@@ -1,3 +1,4 @@
+
 # [[file:slang.org::*Project setup][Project setup:3]]
 cmake_minimum_required(VERSION 3.20.0)
 project(slang LANGUAGES CXX C)
@@ -28,13 +29,39 @@ include_directories(${MLIR_INCLUDE_DIRS})
 link_directories(${LLVM_BUILD_LIBRARY_DIR})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_subdirectory(include)
-include_directories(include)
-add_subdirectory(src)
-if(MLIR_ENABLE_BINDINGS_PYTHON)
-  include(MLIRDetectPythonEnv)
-  mlir_configure_python_dev_packages()
-  add_subdirectory(python)
-endif()
+
+add_llvm_executable(main main.cpp)
+llvm_update_compile_flags(main)
+target_link_libraries(main
+    PRIVATE
+    MLIRInferTypeOpInterface
+    
+    MLIRExecutionEngine
+    
+    MLIRArithToLLVM
+    MLIRFuncToLLVM
+    MLIRReconcileUnrealizedCasts
+    MLIRArithDialect
+    MLIRFuncDialect
+    MLIRLLVMDialect
+    MLIRExecutionEngine
+    MLIRLLVMToLLVMIRTranslation
+    MLIRTargetLLVMIRExport
+    MLIRTransforms
+    MLIRPass
+    MLIRIR
+    MLIRSupport
+  )
+  
+mlir_check_all_link_libraries(main)
+
+#add_subdirectory(include)
+#include_directories(include)
+#add_subdirectory(src)
+#if(MLIR_ENABLE_BINDINGS_PYTHON)
+#  include(MLIRDetectPythonEnv)
+#  mlir_configure_python_xdev_packages()
+#  add_subdirectory(python)
+#endif()
 #add_subdirectory(test)
 # Project setup:3 ends here
